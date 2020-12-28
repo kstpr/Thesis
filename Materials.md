@@ -21,3 +21,6 @@
 ### Papers
 ### Other
 
+
+## Basic learning materials
+- https://github.com/louisfb01/start-machine-learning-in-2020
