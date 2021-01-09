@@ -40,15 +40,18 @@
 
 ## Learning GI
 
-### Papers
+### Papers GI
 
-### Other
+[Deep Radiance Caching: Convolutional Autoencoders Deeper in Ray Tracing](https://arxiv.org/pdf/1910.02480v2.pdf)
+
+### Other GI
 
 ---
 
 ## Relighting
 
 ### Papers
+[StyleFlow : Attribute-conditioned Exploration of StyleGAN-generated Images using Conditional Continuous Normalizing Flows](https://rameenabdal.github.io/StyleFlow/)
 
 ### Other
 
@@ -88,3 +91,10 @@
 - https://medium.com/intel-student-ambassadors/tips-on-training-your-gans-faster-and-achieve-better-results-9200354acaa5
 - https://www.kaggle.com/c/generative-dog-images/overview/evaluation
 - https://towardsdatascience.com/10-lessons-i-learned-training-generative-adversarial-networks-gans-for-a-year-c9071159628
+- https://medium.com/beyondminds/advances-in-generative-adversarial-networks-7bad57028032 - **a good one**, reread in a month
+- [Mode collapse](https://aiden.nibali.org/blog/2017-01-18-mode-collapse-gans/)
+- [Wasserstein GANs](https://vincentherrmann.github.io/blog/wasserstein/)
+- [Spectral Normalization Explained](https://christiancosgrove.com/blog/2018/01/04/spectral-normalization-explained.html)
+- [Least squares GAN](https://wiseodd.github.io/techblog/2017/03/02/least-squares-gan/)
+- [From GAN to WGAN](https://lilianweng.github.io/lil-log/2017/08/20/from-GAN-to-WGAN.html#improved-gan-training)
+- [This Will Change the Way You Look at GANs - More mode collapse with nice gifs](https://towardsdatascience.com/this-will-change-the-way-you-look-at-gans-9992af250454)
