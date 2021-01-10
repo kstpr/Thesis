@@ -12,7 +12,7 @@
 
 ### Papers
 
-- [U-Net: Convolutional Networks for Biomedical Image Segmentation](https://arxiv.org/pdf/1505.04597v1.pdf) [[sample code - tf2]](https://github.com/jakeret/unet)
+- :heavy_check_mark: [U-Net: Convolutional Networks for Biomedical Image Segmentation](https://arxiv.org/pdf/1505.04597v1.pdf) [[sample code - tf2]](https://github.com/jakeret/unet)
 
 ### Other
 
@@ -42,7 +42,8 @@
 
 ### Papers GI
 
-[Deep Radiance Caching: Convolutional Autoencoders Deeper in Ray Tracing](https://arxiv.org/pdf/1910.02480v2.pdf)
+- [Deep Radiance Caching: Convolutional Autoencoders Deeper in Ray Tracing](https://arxiv.org/pdf/1910.02480v2.pdf)  
+- :heavy_check_mark: [Deep Shading: Convolutional Neural Networks for Screen-Space Shading](https://arxiv.org/abs/1603.06078v2)
 
 ### Other GI
 
