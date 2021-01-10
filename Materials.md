@@ -8,23 +8,49 @@
 
 ---
 
+## GANs Improvements
+
+### Papers GANsImpr
+
+2016
+
+- [Improved Techniques for Training GANs](https://arxiv.org/abs/1606.03498v1)
+
+2017
+
+- [On Convergence and Stability of GANs - DRAGAN](https://arxiv.org/abs/1705.07215)
+
+2018
+
+- [Transferring GANs: generating images from limited data](https://arxiv.org/abs/1805.01677)
+- [Spectral Normalization for Generative Adversarial Networks](https://arxiv.org/abs/1802.05957v1)
+- [Progressive Growing of GANs for Improved Quality, Stability, and Variation](https://arxiv.org/abs/1710.10196v3)
+
+2019
+
+- [RoCGAN: Robust Conditional GAN](https://arxiv.org/abs/1805.08657)
+
+2020  
+
+- [Training Generative Adversarial Networks with Limited Data](https://arxiv.org/abs/2006.06676)
+- [Your GAN is Secretly an Energy-based Model and You Should Use Discriminator Driven Latent Sampling](https://arxiv.org/abs/2003.06060v2)
+
+---
+
+## Transfer Learning for GANs
+
+### Papers TrL
+
+- [Mind2Mind : Transfer Learning for GANs](https://arxiv.org/abs/1906.11613v2)
+- 
+
+---
+
 ## Building Blocks
 
 ### Papers
 
 - :heavy_check_mark: [U-Net: Convolutional Networks for Biomedical Image Segmentation](https://arxiv.org/pdf/1505.04597v1.pdf) [[sample code - tf2]](https://github.com/jakeret/unet)
-
-### Other
-
----
-
-## Model improvement
-
-### Papers
-
-- [Training Generative Adversarial Networks with Limited Data](https://arxiv.org/pdf/2006.06676.pdf)
-- [SPECTRAL NORMALIZATION FOR GENERATIVE ADVERSARIAL NETWORKS](https://arxiv.org/pdf/1802.05957.pdf)
-- [Your GAN is Secretly an Energy-based Model and You Should Use Discriminator Driven Latent Sampling](https://arxiv.org/abs/2003.06060v2)
 
 ### Other
 
