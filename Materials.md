@@ -42,9 +42,14 @@
 ### Papers TrL
 
 - [Mind2Mind : Transfer Learning for GANs](https://arxiv.org/abs/1906.11613v2)
-- 
 
 ---
+
+## Loss Functions
+
+### Papers Ls
+
+-[Loss Functions for Image Restoration with NeuralNetworks](https://arxiv.org/abs/1511.08861v3)
 
 ## Building Blocks
 
@@ -102,11 +107,15 @@
 
 ## Basic learning materials
 
+- [Dive into Deep Learning book](http://d2l.ai/), [видеа](https://www.youtube.com/watch?v=Gs2paTGDXX4&list=PLZSO_6-bSqHQsDaBNtcFwMQuJw_djFnbd&index=6)
 - https://github.com/louisfb01/start-machine-learning-in-2020
 - https://towardsdatascience.com/a-comprehensive-guide-to-convolutional-neural-networks-the-eli5-way-3bd2b1164a53
 - https://ujjwalkarn.me/2016/08/11/intuitive-explanation-convnets/
-- https://github.com/vdumoulin/conv_arithmetic
+- [Convolution arithmetic](https://github.com/vdumoulin/conv_arithmetic)
 - https://cs231n.github.io/convolutional-networks/#case
+- [1×1 Convolution In Detail](https://hackerstreak.com/1x1-convolution/)
+- [Squeeze and Excitation Networks Explained with PyTorch Implementation](https://amaarora.github.io/2020/07/24/SeNet.html)
+- [DenseNet Architecture Explained with PyTorch Implementation from TorchVision](https://amaarora.github.io/2020/08/02/densenets.html)
 
 ## GANs Tips and tricks
 
