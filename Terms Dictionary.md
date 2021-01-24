@@ -7,3 +7,5 @@
 Поле на възприятието - Receptive field  
 Свойство - Feature  
 Изправяща Линейна Единица (ИЛУ) - Rectifier Linear Unit (ReLU)
+Oстатъчен блок - Residual block
+Прескачаща връзка - Skip connection

@@ -69,6 +69,14 @@
 
 ---
 
+## Various Image2Image
+
+### Papers I2I
+
+- [A Variational U-Net for Conditional Appearance and Shape Generation](https://arxiv.org/abs/1804.04694v1)
+
+---
+
 ## Learning GI
 
 ### Papers GI
@@ -76,16 +84,13 @@
 - [Deep Radiance Caching: Convolutional Autoencoders Deeper in Ray Tracing](https://arxiv.org/pdf/1910.02480v2.pdf)  
 - :heavy_check_mark: [Deep Shading: Convolutional Neural Networks for Screen-Space Shading](https://arxiv.org/abs/1603.06078v2)
 
-### Other GI
-
 ---
 
 ## Relighting
 
-### Papers
-[StyleFlow : Attribute-conditioned Exploration of StyleGAN-generated Images using Conditional Continuous Normalizing Flows](https://rameenabdal.github.io/StyleFlow/)
+### Papers Rl
 
-### Other
+- [StyleFlow : Attribute-conditioned Exploration of StyleGAN-generated Images using Conditional Continuous Normalizing Flows](https://rameenabdal.github.io/StyleFlow/)
 
 ---
 
@@ -134,3 +139,8 @@
 - [Least squares GAN](https://wiseodd.github.io/techblog/2017/03/02/least-squares-gan/)
 - [From GAN to WGAN](https://lilianweng.github.io/lil-log/2017/08/20/from-GAN-to-WGAN.html#improved-gan-training)
 - [This Will Change the Way You Look at GANs - More mode collapse with nice gifs](https://towardsdatascience.com/this-will-change-the-way-you-look-at-gans-9992af250454)
+- https://github.com/lucidrains/lightweight-gan - https://openreview.net/forum?id=1Fqg133qRaI
+
+## Others
+
+- https://phys.org/news/2019-05-cosmogan-neural-network-dark.html
