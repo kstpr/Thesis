@@ -4,6 +4,25 @@
 
 ### Papers
 
+2014
+
+- [Generative Adversarial Nets](https://papers.nips.cc/paper/2014/file/5ca3e9b122f61f8f06494c97b1afccf3-Paper.pdf)
+
+2017
+
+- [NIPS 2016 Tutorial: Generative Adversarial Networks](https://arxiv.org/abs/1701.00160)
+
+2019
+
+- [Self-Attention Generative Adversarial Networks](https://arxiv.org/abs/1805.08318v2)
+- [The Six Fronts of the Generative Adversarial Networks](https://arxiv.org/abs/1910.13076)
+
+2020
+
+- [A Survey on the Progression and Performance of Generative Adversarial Networks](https://www.researchgate.net/publication/344787674_A_Survey_on_the_Progression_and_Performance_of_Generative_Adversarial_Networks)
+- [A Review on Generative Adversarial Networks: Algorithms, Theory, and Applications](https://arxiv.org/abs/2001.06937)
+- [Generative Adversarial Networks in Computer Vision: A Survey and Taxonomy](https://arxiv.org/abs/1906.01529)
+
 ### Other
 
 ---
@@ -34,6 +53,7 @@
 
 - [Training Generative Adversarial Networks with Limited Data](https://arxiv.org/abs/2006.06676)
 - [Your GAN is Secretly an Energy-based Model and You Should Use Discriminator Driven Latent Sampling](https://arxiv.org/abs/2003.06060v2)
+- [Mind2Mind : Transfer Learning for GANs](https://arxiv.org/abs/1906.11613)
 
 ---
 
@@ -49,15 +69,26 @@
 
 ### Papers Ls
 
--[Loss Functions for Image Restoration with NeuralNetworks](https://arxiv.org/abs/1511.08861v3)
+- [Loss Functions for Image Restoration with Neural Networks](https://arxiv.org/abs/1511.08861v3)
 
 ## Building Blocks
 
-### Papers
+### Papers BB
+
+#### U-Nets
+
+2015
 
 - :heavy_check_mark: [U-Net: Convolutional Networks for Biomedical Image Segmentation](https://arxiv.org/pdf/1505.04597v1.pdf) [[sample code - tf2]](https://github.com/jakeret/unet)
 
-### Other
+2016
+
+- [U-shaped Networks for Shape from Light Field](http://www.bmva.org/bmvc/2016/papers/paper037/index.html)
+
+2020
+
+- [U-Net and its variants for medical image segmentation: theory and applications](https://arxiv.org/abs/2011.01118v1)
+- [FREA-Unet Frequency-aware U-net for Modality Transfer](https://arxiv.org/abs/2012.15397)
 
 ---
 
@@ -74,6 +105,10 @@
 ### Papers I2I
 
 - [A Variational U-Net for Conditional Appearance and Shape Generation](https://arxiv.org/abs/1804.04694v1)
+
+### Talks I2I
+
+- [Recent Advances in Unsupervised Image-to-Image Translation](https://www.microsoft.com/en-us/research/video/recent-advances-in-unsupervised-image-to-image-translation/)
 
 ---
 
