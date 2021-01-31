@@ -70,6 +70,9 @@
 ### Papers Ls
 
 - [Loss Functions for Image Restoration with Neural Networks](https://arxiv.org/abs/1511.08861v3)
+- [Generating Images with Perceptual Similarity Metrics based on Deep Networks](https://arxiv.org/abs/1602.02644)
+- [Image Quality Assessment: From Error Visibility to Structural Similarity](http://www.cns.nyu.edu/pub/lcv/wang03-preprint.pdf)
+- [Context Encoders: Feature Learning by Inpainting](https://arxiv.org/abs/1604.07379)
 
 ## Building Blocks
 
@@ -103,6 +106,12 @@
 ## Various Image2Image
 
 ### Papers I2I
+
+2021
+
+- [Image-to-Image Translation: Methods andApplications](https://arxiv.org/abs/2101.08629)
+
+2018
 
 - [A Variational U-Net for Conditional Appearance and Shape Generation](https://arxiv.org/abs/1804.04694v1)
 
