@@ -55,6 +55,10 @@
 - [Your GAN is Secretly an Energy-based Model and You Should Use Discriminator Driven Latent Sampling](https://arxiv.org/abs/2003.06060v2)
 - [Mind2Mind : Transfer Learning for GANs](https://arxiv.org/abs/1906.11613)
 
+2021
+
+- [Towards Faster and Stabilized GAN Training for High-fidelity Few-shot Image Synthesis](https://openreview.net/pdf?id=1Fqg133qRaI)[[code](https://github.com/lucidrains/lightweight-gan)]
+
 ---
 
 ## Transfer Learning for GANs
