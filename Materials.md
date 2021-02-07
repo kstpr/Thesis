@@ -115,9 +115,22 @@
 
 - [Image-to-Image Translation: Methods andApplications](https://arxiv.org/abs/2101.08629)
 
+2020
+
+- [Contrastive Learning for Unpaired Image-to-Image Translation](https://arxiv.org/abs/2007.15651v3)
+- [Deep intrinsic decomposition trained on surreal scenes yet with realistic light effects](https://arxiv.org/abs/2009.06295v1)
+- [Full-Resolution Correspondence Learning for Image Translation](https://arxiv.org/abs/2012.02047v1)
+- [Model-based occlusion disentanglement for image-to-image translation](https://arxiv.org/abs/2004.01071v2)
+- [Old Photo Restoration via Deep Latent Space Translation](https://arxiv.org/abs/2009.07047v1)
+- [SPA-GAN: Spatial Attention GAN for Image-to-Image Translation](https://arxiv.org/abs/1908.06616)
+
 2018
 
 - [A Variational U-Net for Conditional Appearance and Shape Generation](https://arxiv.org/abs/1804.04694v1)
+
+2017
+
+- [Be Your Own Prada - Fashion Synthesis with Structural Coherence](https://arxiv.org/abs/1710.07346)
 
 ### Talks I2I
 
@@ -145,6 +158,9 @@
 ## Semantic Synthesis
 
 ### Papers (SS)
+
+- [Local Class-Specific and Global Image-Level Generative Adversarial Networks for Semantic-Guided Scene Generation](https://arxiv.org/abs/1912.12215v3)
+- [YOU ONLY NEED ADVERSARIAL SUPERVISION FOR SEMANTIC IMAGE SYNTHESIS](https://arxiv.org/abs/2012.04781v1)
 
 ### Other (SS)
 
