@@ -8,6 +8,10 @@
 
 - [Generative Adversarial Nets](https://papers.nips.cc/paper/2014/file/5ca3e9b122f61f8f06494c97b1afccf3-Paper.pdf)
 
+2016
+
+- [Adversarial autoencoders]()
+
 2017
 
 - [NIPS 2016 Tutorial: Generative Adversarial Networks](https://arxiv.org/abs/1701.00160)
@@ -38,6 +42,7 @@
 2017
 
 - [On Convergence and Stability of GANs - DRAGAN](https://arxiv.org/abs/1705.07215)
+- [Least squares generative adversarial networks.](https://arxiv.org/abs/1611.04076v3)
 
 2018
 
@@ -73,6 +78,7 @@
 
 ### Papers Ls
 
+- [Perceptual Losses for Real-Time Style Transferand Super-Resolution](https://arxiv.org/abs/1603.08155)
 - [Loss Functions for Image Restoration with Neural Networks](https://arxiv.org/abs/1511.08861v3)
 - [Generating Images with Perceptual Similarity Metrics based on Deep Networks](https://arxiv.org/abs/1602.02644)
 - [Image Quality Assessment: From Error Visibility to Structural Similarity](http://www.cns.nyu.edu/pub/lcv/wang03-preprint.pdf)
@@ -188,6 +194,7 @@
 
 ## GANs Tips and tricks
 
+- [GAN losses](https://towardsdatascience.com/gan-objective-functions-gans-and-their-variations-ad77340bce3c)
 - https://github.com/soumith/ganhacks
 - https://machinelearningmastery.com/how-to-code-generative-adversarial-network-hacks/
 - https://machinelearningmastery.com/how-to-train-stable-generative-adversarial-networks/
