@@ -73,17 +73,22 @@
 - [Generating Images with Perceptual Similarity Metrics based on Deep Networks](https://arxiv.org/abs/1602.02644)
 - [Image Quality Assessment: From Error Visibility to Structural Similarity](http://www.cns.nyu.edu/pub/lcv/wang03-preprint.pdf)
 - [Context Encoders: Feature Learning by Inpainting](https://arxiv.org/abs/1604.07379)
+- [Perceptual losses for real-time style transfer and super-resolution.]()
 
 ## Building Blocks
 
 ### Papers BB
+
+#### General Convnets
+
+2021
+- [RepVGG: Making VGG-style ConvNets Great Again](https://arxiv.org/abs/2101.03697v1)
 
 #### U-Nets
 
 2015
 
 - :heavy_check_mark: [U-Net: Convolutional Networks for Biomedical Image Segmentation](https://arxiv.org/pdf/1505.04597v1.pdf) [[sample code - tf2]](https://github.com/jakeret/unet)
-
 2016
 
 - [U-shaped Networks for Shape from Light Field](http://www.bmva.org/bmvc/2016/papers/paper037/index.html)
@@ -92,6 +97,10 @@
 
 - [U-Net and its variants for medical image segmentation: theory and applications](https://arxiv.org/abs/2011.01118v1)
 - [FREA-Unet Frequency-aware U-net for Modality Transfer](https://arxiv.org/abs/2012.15397)
+
+2021
+
+- [U2-Net: Going Deeper with Nested U-Structure for Salient Object Detection](https://arxiv.org/abs/2005.09007v2)
 
 ---
 
@@ -114,6 +123,10 @@
 2018
 
 - [A Variational U-Net for Conditional Appearance and Shape Generation](https://arxiv.org/abs/1804.04694v1)
+
+2016
+
+- :heavy_check_mark: [Image-to-Image Translation with Conditional Adversarial Networks](https://arxiv.org/abs/1611.07004)
 
 ### Talks I2I
 
@@ -165,6 +178,7 @@
 - [1×1 Convolution In Detail](https://hackerstreak.com/1x1-convolution/)
 - [Squeeze and Excitation Networks Explained with PyTorch Implementation](https://amaarora.github.io/2020/07/24/SeNet.html)
 - [DenseNet Architecture Explained with PyTorch Implementation from TorchVision](https://amaarora.github.io/2020/08/02/densenets.html)
+- [Using Constant Padding, Reflection Padding and Replication Padding with TensorFlow and Keras](https://www.machinecurve.com/index.php/2020/02/10/using-constant-padding-reflection-padding-and-replication-padding-with-keras/)
 
 ## GANs Tips and tricks
 
