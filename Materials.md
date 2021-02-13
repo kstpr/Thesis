@@ -8,6 +8,10 @@
 
 - [Generative Adversarial Nets](https://papers.nips.cc/paper/2014/file/5ca3e9b122f61f8f06494c97b1afccf3-Paper.pdf)
 
+2016
+
+- [Adversarial autoencoders]()
+
 2017
 
 - [NIPS 2016 Tutorial: Generative Adversarial Networks](https://arxiv.org/abs/1701.00160)
@@ -38,6 +42,7 @@
 2017
 
 - [On Convergence and Stability of GANs - DRAGAN](https://arxiv.org/abs/1705.07215)
+- [Least squares generative adversarial networks.](https://arxiv.org/abs/1611.04076v3)
 
 2018
 
@@ -55,6 +60,10 @@
 - [Your GAN is Secretly an Energy-based Model and You Should Use Discriminator Driven Latent Sampling](https://arxiv.org/abs/2003.06060v2)
 - [Mind2Mind : Transfer Learning for GANs](https://arxiv.org/abs/1906.11613)
 
+2021
+
+- [Towards Faster and Stabilized GAN Training for High-fidelity Few-shot Image Synthesis](https://openreview.net/pdf?id=1Fqg133qRaI)[[code](https://github.com/lucidrains/lightweight-gan)]
+
 ---
 
 ## Transfer Learning for GANs
@@ -69,6 +78,7 @@
 
 ### Papers Ls
 
+- [Perceptual Losses for Real-Time Style Transferand Super-Resolution](https://arxiv.org/abs/1603.08155)
 - [Loss Functions for Image Restoration with Neural Networks](https://arxiv.org/abs/1511.08861v3)
 - [Generating Images with Perceptual Similarity Metrics based on Deep Networks](https://arxiv.org/abs/1602.02644)
 - [Image Quality Assessment: From Error Visibility to Structural Similarity](http://www.cns.nyu.edu/pub/lcv/wang03-preprint.pdf)
@@ -120,13 +130,27 @@
 
 - [Image-to-Image Translation: Methods andApplications](https://arxiv.org/abs/2101.08629)
 
+2020
+
+- [Contrastive Learning for Unpaired Image-to-Image Translation](https://arxiv.org/abs/2007.15651v3)
+- [Deep intrinsic decomposition trained on surreal scenes yet with realistic light effects](https://arxiv.org/abs/2009.06295v1)
+- [Full-Resolution Correspondence Learning for Image Translation](https://arxiv.org/abs/2012.02047v1)
+- [Model-based occlusion disentanglement for image-to-image translation](https://arxiv.org/abs/2004.01071v2)
+- [Old Photo Restoration via Deep Latent Space Translation](https://arxiv.org/abs/2009.07047v1)
+- [SPA-GAN: Spatial Attention GAN for Image-to-Image Translation](https://arxiv.org/abs/1908.06616)
+
 2018
 
 - [A Variational U-Net for Conditional Appearance and Shape Generation](https://arxiv.org/abs/1804.04694v1)
 
+2017
+
+- [Be Your Own Prada - Fashion Synthesis with Structural Coherence](https://arxiv.org/abs/1710.07346)
+
 2016
 
 - :heavy_check_mark: [Image-to-Image Translation with Conditional Adversarial Networks](https://arxiv.org/abs/1611.07004)
+
 
 ### Talks I2I
 
@@ -155,6 +179,9 @@
 
 ### Papers (SS)
 
+- [Local Class-Specific and Global Image-Level Generative Adversarial Networks for Semantic-Guided Scene Generation](https://arxiv.org/abs/1912.12215v3)
+- [YOU ONLY NEED ADVERSARIAL SUPERVISION FOR SEMANTIC IMAGE SYNTHESIS](https://arxiv.org/abs/2012.04781v1)
+
 ### Other (SS)
 
 - https://ai.googleblog.com/2020/11/using-gans-to-create-fantastical.html
@@ -182,6 +209,7 @@
 
 ## GANs Tips and tricks
 
+- [GAN losses](https://towardsdatascience.com/gan-objective-functions-gans-and-their-variations-ad77340bce3c)
 - https://github.com/soumith/ganhacks
 - https://machinelearningmastery.com/how-to-code-generative-adversarial-network-hacks/
 - https://machinelearningmastery.com/how-to-train-stable-generative-adversarial-networks/
