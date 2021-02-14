@@ -53,6 +53,7 @@
 2019
 
 - [RoCGAN: Robust Conditional GAN](https://arxiv.org/abs/1805.08657)
+- [A Large-Scale Study on Regularization and Normalization in GANs]()
 
 2020  
 
@@ -128,7 +129,7 @@
 
 2021
 
-- [Image-to-Image Translation: Methods andApplications](https://arxiv.org/abs/2101.08629)
+- [Image-to-Image Translation: Methods and Applications](https://arxiv.org/abs/2101.08629)
 
 2020
 
@@ -138,6 +139,7 @@
 - [Model-based occlusion disentanglement for image-to-image translation](https://arxiv.org/abs/2004.01071v2)
 - [Old Photo Restoration via Deep Latent Space Translation](https://arxiv.org/abs/2009.07047v1)
 - [SPA-GAN: Spatial Attention GAN for Image-to-Image Translation](https://arxiv.org/abs/1908.06616)
+- [StarGAN v2: Diverse Image Synthesis for Multiple Domains](https://arxiv.org/abs/1912.01865)
 
 2018
 
@@ -209,6 +211,7 @@
 
 ## GANs Tips and tricks
 
+- [A Leap into the Future: Generative Adversarial Networks](https://medium.com/datadriveninvestor/a-leap-into-the-future-generative-adversarial-networks-96a780ed8ee6)
 - [GAN losses](https://towardsdatascience.com/gan-objective-functions-gans-and-their-variations-ad77340bce3c)
 - https://github.com/soumith/ganhacks
 - https://machinelearningmastery.com/how-to-code-generative-adversarial-network-hacks/
@@ -226,7 +229,8 @@
 - [From GAN to WGAN](https://lilianweng.github.io/lil-log/2017/08/20/from-GAN-to-WGAN.html#improved-gan-training)
 - [This Will Change the Way You Look at GANs - More mode collapse with nice gifs](https://towardsdatascience.com/this-will-change-the-way-you-look-at-gans-9992af250454)
 - https://github.com/lucidrains/lightweight-gan - https://openreview.net/forum?id=1Fqg133qRaI
+- [Training GANs with limited data](https://medium.com/swlh/training-gans-with-limited-data-22a7c8ffce78)
 
 ## Others
 
-- https://phys.org/news/2019-05-cosmogan-neural-network-dark.html
+- https://phys.org/news/2019-05-cosmogan-neural-network-dark.ht
