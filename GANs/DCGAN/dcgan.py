@@ -1,36 +1,48 @@
 # We follow the DCGAN tutorial from https://pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html
-# Main change is refactoring into a class as a base for pipeline and intermediate results saving and
+# Main change is refactoring into a class as a base for pipeline and saving of intermediate results and
 # visualizing
 
 # To add a new cell, type '# %%'
 # To add a new markdown cell, type '# %% [markdown]'
 # %%
 from __future__ import print_function
+
 #%matplotlib inline
 import random
+from timeit import default_timer as timer
+from dataclasses import dataclass
+
 import torch
+
 import torch.nn as nn
 from torch.nn.modules.batchnorm import BatchNorm2d
 from torch.nn.modules.conv import ConvTranspose2d
 import torch.nn.parallel
+
 import torch.backends.cudnn as cudnn
 import torch.optim as optim
 import torch.utils.data
+
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torchvision.utils as vutils
+
 import numpy as np
+
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+
 from IPython.display import HTML
+
 
 def weights_init(m):
     classname = m.__class__.__name__
-    if classname.find('Conv') != -1:
+    if classname.find("Conv") != -1:
         nn.init.normal_(m.weight.data, 0.0, 0.02)
-    elif classname.find('BatchNorm') != -1:
+    elif classname.find("BatchNorm") != -1:
         nn.init.normal_(m.weight.data, 1.0, 0.02)
         nn.init.constant_(m.bias.data, 0)
+
 
 class Generator(nn.Module):
     def __init__(self, num_gpu, latent_size, feat_maps_size, num_channels):
@@ -44,7 +56,7 @@ class Generator(nn.Module):
                 kernel_size=4,
                 stride=1,
                 padding=0,
-                bias=False
+                bias=False,
             ),
             nn.BatchNorm2d(feat_maps_size * 8),
             nn.ReLU(True),
@@ -55,7 +67,7 @@ class Generator(nn.Module):
                 kernel_size=4,
                 stride=2,
                 padding=1,
-                bias=False
+                bias=False,
             ),
             nn.BatchNorm2d(feat_maps_size * 4),
             nn.ReLU(True),
@@ -66,7 +78,7 @@ class Generator(nn.Module):
                 kernel_size=4,
                 stride=2,
                 padding=1,
-                bias=False
+                bias=False,
             ),
             nn.BatchNorm2d(feat_maps_size * 2),
             nn.ReLU(True),
@@ -77,17 +89,18 @@ class Generator(nn.Module):
                 kernel_size=4,
                 stride=2,
                 padding=1,
-                bias=False
+                bias=False,
             ),
             nn.BatchNorm2d(feat_maps_size),
             nn.ReLU(True),
             ## last
             nn.ConvTranspose2d(feat_maps_size, num_channels, 4, 2, 1, bias=False),
-            nn.Tanh()
+            nn.Tanh(),
         )
-    
+
     def forward(self, input):
         return self.main(input)
+
 
 class Discriminator(nn.Module):
     def __init__(self, num_gpu, num_channels, feat_maps_size):
@@ -111,39 +124,67 @@ class Discriminator(nn.Module):
             nn.LeakyReLU(0.2, inplace=True),
             # Last
             nn.Conv2d(feat_maps_size * 8, 1, 4, 1, 0, bias=False),
-            nn.Sigmoid()
+            nn.Sigmoid(),
         )
-    
+
     def forward(self, input):
         return self.main(input)
 
+
+@dataclass
+class Config:
+    num_gpu: int
+
+    # Network parameters
+    g_feat_maps: int  # number of feature maps before the end of the generator
+    d_feat_maps: int  # number of feature maps after the input of the discriminator
+    num_channels: int  # the number of channels for G's output and D's input
+
+    # Data parameters
+    dataroot: str
+    results_root: str  # results in the form of generator samples and loss history
+    dataloader_num_workers: str  # num threads to load the data
+
+    # Instance parameters
+    image_size: int  # implicitly w = h
+    latent_size: int  # size of the latent noise vector
+
+    # Training parameters
+    batch_size: int
+    num_epochs: int
+    learning_rate: int
+
+    # Adam hyperparams
+    beta_1: int
+
+
 class DCGAN:
-    def __init__(self, num_gpu=1) -> None:
+    def __init__(self, config: Config) -> None:
+        self.config: Config = config
         self.init_torch()
 
-        self.device = torch.device("cuda:0" if (torch.cuda.is_available() and num_gpu > 0) else "cpu")
+        self.device = torch.device(
+            "cuda:0"
+            if (torch.cuda.is_available() and self.config.num_gpu > 0)
+            else "cpu"
+        )
 
-        self.init_parameters()
         self.init_dataset_and_loader()
 
-        g_feat_maps = 64
-        d_feat_maps = 64
-        num_channels = 3
-
         self.G = Generator(
-            num_gpu=num_gpu,
-            latent_size=self.latent_size,
-            feat_maps_size=g_feat_maps,
-            num_channels=num_channels
+            num_gpu=self.config.num_gpu,
+            latent_size=self.config.latent_size,
+            feat_maps_size=self.config.g_feat_maps,
+            num_channels=self.config.num_channels,
         ).to(self.device)
-        
+
         self.G.apply(weights_init)
         print(self.G)
 
         self.D = Discriminator(
-            num_gpu=num_gpu,
-            num_channels=num_channels,
-            feat_maps_size=d_feat_maps
+            num_gpu=self.config.num_gpu,
+            num_channels=self.config.num_channels,
+            feat_maps_size=self.config.d_feat_maps,
         ).to(self.device)
 
         self.D.apply(weights_init)
@@ -157,64 +198,49 @@ class DCGAN:
         random.seed(manualSeed)
         torch.manual_seed(manualSeed)
 
-    def init_parameters(self) -> None:
-        self.dataroot = '~/Thesis/data/'
-        self.results_root = '/home/ksp/Thesis/src/Thesis/GANs/DCGAN/results/'
-        self.cats_dataroot = self.dataroot + 'cats_only/'
-        self.wildlife_dataroot = self.dataroot + 'wildlife_only/'
-
-        self.workers = 12
-
-        self.batch_size = 16
-        self.image_size = 64
-        self.latent_size = 100
-        
-        self.num_epochs = 100
-        self.learning_rate = 0.0002
-
-        # Adam hyperparams
-        self.beta_1 = 0.5
-        self.num_gpu = 1
-
     def init_dataset_and_loader(self):
         dataset = dset.ImageFolder(
-            root=self.wildlife_dataroot,
-            transform=transforms.Compose([
-                transforms.Resize(self.image_size),
-                transforms.CenterCrop(self.image_size),
-                transforms.ToTensor(),
-                transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-            ])
+            root=self.config.dataroot,
+            transform=transforms.Compose(
+                [
+                    transforms.Resize(self.config.image_size),
+                    transforms.CenterCrop(self.config.image_size),
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                ]
+            ),
         )
 
         self.dataloader = torch.utils.data.dataloader.DataLoader(
             dataset=dataset,
-            batch_size=self.batch_size,
+            batch_size=self.config.batch_size,
             shuffle=True,
-            num_workers=self.workers
+            num_workers=self.config.dataloader_num_workers,
         )
 
     def init_loss_and_optimizer(self) -> None:
-        self.criterion : nn.BCELoss = nn.BCELoss()
+        self.criterion: nn.BCELoss = nn.BCELoss()
 
-        self.fixed_noise = torch.randn(64, self.latent_size, 1, 1, device=self.device)
+        self.fixed_noise = torch.randn(64, self.config.latent_size, 1, 1, device=self.device)
 
-        self.optimizerD = optim.Adam(self.D.parameters(), lr=self.learning_rate, betas=(self.beta_1, 0.999) )
-        self.optimizerG = optim.Adam(self.G.parameters(), lr=self.learning_rate, betas=(self.beta_1, 0.999) )
+        self.optimizerD = optim.Adam(
+            self.D.parameters(), lr=self.config.learning_rate, betas=(self.config.beta_1, 0.999)
+        )
+        self.optimizerG = optim.Adam(
+            self.G.parameters(), lr=self.config.learning_rate, betas=(self.config.beta_1, 0.999)
+        )
 
     def plot_training_examples(self):
         real_batch = next(iter(self.dataloader))
-        plt.figure(figsize=(8,8))
+        plt.figure(figsize=(8, 8))
         plt.axis("off")
         plt.title("Training Images")
         plt.imshow(
             np.transpose(
                 vutils.make_grid(
-                    real_batch[0].to(self.device)[:64],
-                    padding=2,
-                    normalize=True
+                    real_batch[0].to(self.device)[:64], padding=2, normalize=True
                 ).cpu(),
-                (1,2,0)
+                (1, 2, 0),
             )
         )
 
@@ -234,10 +260,13 @@ class DCGAN:
         fake_label = 0
 
         print("Starting training loop...")
-        for epoch in range(self.num_epochs):
+        for epoch in range(self.config.num_epochs):
+            start = timer()
             for i, data in enumerate(self.dataloader, 0):
                 self.train_batch(iters, real_label, fake_label, epoch, i, data)
                 iters += 1
+            end = timer()
+            print("Epoch %d took %.4fs." % (epoch, end - start))
 
     def train_batch(self, iters, real_label, fake_label, epoch, i, data):
         # Update D - max log(D(x)) + log(1 - D(G(z))
@@ -246,7 +275,9 @@ class DCGAN:
         self.D.zero_grad()
         real = data[0].to(self.device)
         b_size = real.size(0)
-        label = torch.full((b_size,), real_label, dtype=torch.float32, device=self.device)
+        label = torch.full(
+            (b_size,), real_label, dtype=torch.float32, device=self.device
+        )
 
         # Forward pass real batch through D
         output = self.D(real).view(-1)
@@ -258,7 +289,7 @@ class DCGAN:
         D_x = output.mean().item()
 
         # Train with fake batch
-        noise = torch.randn(b_size, self.latent_size, 1, 1, device=self.device)
+        noise = torch.randn(b_size, self.config.latent_size, 1, 1, device=self.device)
 
         # Generate fake batch using G
         fake = self.G(noise)
@@ -275,7 +306,7 @@ class DCGAN:
 
         D_G_z1 = output.mean().item()
 
-        errD = errD_real + errD_fake # how
+        errD = errD_real + errD_fake  # how
 
         self.optimizerD.step()
 
@@ -298,21 +329,32 @@ class DCGAN:
 
     def log_batch_stats(self, iters, epoch, i, D_x, D_G_z1, errD, errG, D_G_z2):
         if i % 50 == 0:
-            print('[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f' %
-                (epoch, self.num_epochs, i, len(self.dataloader), errD.item(), errG.item(), D_x, D_G_z1, D_G_z2)
+            print(
+                "[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f"
+                % (
+                    epoch,
+                    self.config.num_epochs,
+                    i,
+                    len(self.dataloader),
+                    errD.item(),
+                    errG.item(),
+                    D_x,
+                    D_G_z1,
+                    D_G_z2,
+                )
             )
 
         self.G_losses.append(errG.item())
         self.D_losses.append(errD.item())
 
         if (epoch % 5 == 0) and (i == len(self.dataloader) - 1):
-            print('End of %d-th epoch:' % epoch)
+            print("End of %d-th epoch:" % epoch)
             with torch.no_grad():
                 fake = self.G(self.fixed_noise).detach().cpu()
                 self.plot_current_fake(fake, epoch, False)
 
-        if (epoch == self.num_epochs - 1) and (i == len(self.dataloader) - 1):
-            print ("End result:")
+        if (epoch == self.config.num_epochs - 1) and (i == len(self.dataloader) - 1):
+            print("End result:")
             with torch.no_grad():
                 fake = self.G(self.fixed_noise).detach().cpu()
                 self.plot_current_fake(fake, epoch, True)
@@ -323,7 +365,7 @@ class DCGAN:
         #         self.img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
 
     def plot_losses(self):
-        plt.figure(figsize=(10,5))
+        plt.figure(figsize=(10, 5))
         plt.title("G and D loss during trainning")
         plt.plot(self.G_losses, label="G")
         plt.plot(self.D_losses, label="D")
@@ -331,40 +373,67 @@ class DCGAN:
         plt.ylabel("Loss")
         plt.legend()
         plt.show()
-    
+
     def plot_current_fake(self, fake_batch, epoch, isFinal):
-        plt.figure(figsize=(16,16))
+        plt.figure(figsize=(16, 16))
         plt.axis("off")
-        plt.title('Images in' + ("final epoch" if isFinal else 'epoch %d' % (epoch)))
+        plt.title("Images in" + ("final epoch" if isFinal else "epoch %d" % (epoch)))
         plt.imshow(
             np.transpose(
                 vutils.make_grid(
-                    fake_batch.to(self.device)[:64],
-                    padding=2,
-                    normalize=True
+                    fake_batch.to(self.device)[:64], padding=2, normalize=True
                 ).cpu(),
-                (1,2,0)
+                (1, 2, 0),
             )
         )
-        plt.savefig(self.results_root + 'epoch%d.png' % (epoch))
+        plt.savefig(self.config.results_root + "epoch%d.png" % (epoch))
         print("Figure saved.")
 
     # %%capture
     def plot_results_animation(self):
         import matplotlib
-        matplotlib.rcParams['animation.embed_limit'] = 64
 
-        fig=plt.figure(figsize=(12,12))
+        matplotlib.rcParams["animation.embed_limit"] = 64
+
+        fig = plt.figure(figsize=(12, 12))
         plt.axis("off")
-        ims = [[plt.imshow(np.transpose(i, (1,2,0)), animated=True)] for i in self.img_list]
-        ani = animation.ArtistAnimation(fig, ims, interval=1000, repeat_delay=1000, blit=True)
+        ims = [
+            [plt.imshow(np.transpose(i, (1, 2, 0)), animated=True)]
+            for i in self.img_list
+        ]
+        ani = animation.ArtistAnimation(
+            fig, ims, interval=1000, repeat_delay=1000, blit=True
+        )
 
         HTML(ani.to_jshtml())
 
+
 # %%capture
-dcgan = DCGAN()
+dataroot = "~/Thesis/data/"
+results_root = "/home/ksp/Thesis/src/Thesis/GANs/DCGAN/results/"
+cats_dataroot = dataroot + "cats_only/"
+dogs_dataroot = dataroot + "dogs_only/"
+wildlife_dataroot = dataroot + "wildlife_only/"
+
+config: Config = Config(
+    num_gpu=1,
+    g_feat_maps=64,
+    d_feat_maps=64,
+    num_channels=3,
+    dataroot=dogs_dataroot,
+    results_root=results_root,
+    dataloader_num_workers=12,
+    image_size=64,
+    latent_size=100,
+    batch_size=32,
+    num_epochs=100,
+    learning_rate=0.0002,
+    beta_1=0.5,
+)
+
+dcgan = DCGAN(config=config)
 dcgan.train_and_plot()
 
 # %%
-torch.cuda.empty_cache() 
+torch.cuda.empty_cache()
 # %%
