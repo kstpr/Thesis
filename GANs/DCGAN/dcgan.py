@@ -1,22 +1,23 @@
 # We follow the DCGAN tutorial from https://pytorch.org/tutorials/beginner/dcgan_faces_tutorial.html
-# Main change is refactoring into a class as a base for pipeline and saving of intermediate results and
-# visualizing
+# Main change is refactoring into a class as a base for pipeline, saving of intermediate results and
+# visualizing - kpresnakov
 
 # To add a new cell, type '# %%'
 # To add a new markdown cell, type '# %% [markdown]'
 # %%
 from __future__ import print_function
+from os import makedirs
 
 #%matplotlib inline
 import random
 from timeit import default_timer as timer
-from dataclasses import dataclass
+from datetime import datetime
+
+# mport wandb
 
 import torch
 
 import torch.nn as nn
-from torch.nn.modules.batchnorm import BatchNorm2d
-from torch.nn.modules.conv import ConvTranspose2d
 import torch.nn.parallel
 
 import torch.backends.cudnn as cudnn
@@ -34,128 +35,18 @@ import matplotlib.animation as animation
 
 from IPython.display import HTML
 
+from config import Config
+from discriminator import Discriminator
+from generator import Generator
 
-def weights_init(m):
+
+def weights_init_normal(m):
     classname = m.__class__.__name__
     if classname.find("Conv") != -1:
         nn.init.normal_(m.weight.data, 0.0, 0.02)
     elif classname.find("BatchNorm") != -1:
         nn.init.normal_(m.weight.data, 1.0, 0.02)
         nn.init.constant_(m.bias.data, 0)
-
-
-class Generator(nn.Module):
-    def __init__(self, num_gpu, latent_size, feat_maps_size, num_channels):
-        super(Generator, self).__init__()
-        self.num_gpu = num_gpu
-        self.main = nn.Sequential(
-            # first
-            nn.ConvTranspose2d(
-                in_channels=latent_size,
-                out_channels=feat_maps_size * 8,
-                kernel_size=4,
-                stride=1,
-                padding=0,
-                bias=False,
-            ),
-            nn.BatchNorm2d(feat_maps_size * 8),
-            nn.ReLU(True),
-            # second
-            nn.ConvTranspose2d(
-                in_channels=feat_maps_size * 8,
-                out_channels=feat_maps_size * 4,
-                kernel_size=4,
-                stride=2,
-                padding=1,
-                bias=False,
-            ),
-            nn.BatchNorm2d(feat_maps_size * 4),
-            nn.ReLU(True),
-            # third
-            nn.ConvTranspose2d(
-                in_channels=feat_maps_size * 4,
-                out_channels=feat_maps_size * 2,
-                kernel_size=4,
-                stride=2,
-                padding=1,
-                bias=False,
-            ),
-            nn.BatchNorm2d(feat_maps_size * 2),
-            nn.ReLU(True),
-            # fourth
-            nn.ConvTranspose2d(
-                in_channels=feat_maps_size * 2,
-                out_channels=feat_maps_size,
-                kernel_size=4,
-                stride=2,
-                padding=1,
-                bias=False,
-            ),
-            nn.BatchNorm2d(feat_maps_size),
-            nn.ReLU(True),
-            ## last
-            nn.ConvTranspose2d(feat_maps_size, num_channels, 4, 2, 1, bias=False),
-            nn.Tanh(),
-        )
-
-    def forward(self, input):
-        return self.main(input)
-
-
-class Discriminator(nn.Module):
-    def __init__(self, num_gpu, num_channels, feat_maps_size):
-        super(Discriminator, self).__init__()
-        self.num_gpu = num_gpu
-        self.main = nn.Sequential(
-            # L1
-            nn.Conv2d(num_channels, feat_maps_size, 4, 2, 1, bias=False),
-            nn.LeakyReLU(0.2, inplace=True),
-            # L2
-            nn.Conv2d(feat_maps_size, feat_maps_size * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(feat_maps_size * 2),
-            nn.LeakyReLU(0.2, inplace=True),
-            # L3
-            nn.Conv2d(feat_maps_size * 2, feat_maps_size * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(feat_maps_size * 4),
-            nn.LeakyReLU(0.2, inplace=True),
-            # L4
-            nn.Conv2d(feat_maps_size * 4, feat_maps_size * 8, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(feat_maps_size * 8),
-            nn.LeakyReLU(0.2, inplace=True),
-            # Last
-            nn.Conv2d(feat_maps_size * 8, 1, 4, 1, 0, bias=False),
-            nn.Sigmoid(),
-        )
-
-    def forward(self, input):
-        return self.main(input)
-
-
-@dataclass
-class Config:
-    num_gpu: int
-
-    # Network parameters
-    g_feat_maps: int  # number of feature maps before the end of the generator
-    d_feat_maps: int  # number of feature maps after the input of the discriminator
-    num_channels: int  # the number of channels for G's output and D's input
-
-    # Data parameters
-    dataroot: str
-    results_root: str  # results in the form of generator samples and loss history
-    dataloader_num_workers: str  # num threads to load the data
-
-    # Instance parameters
-    image_size: int  # implicitly w = h
-    latent_size: int  # size of the latent noise vector
-
-    # Training parameters
-    batch_size: int
-    num_epochs: int
-    learning_rate: int
-
-    # Adam hyperparams
-    beta_1: int
 
 
 class DCGAN:
@@ -178,7 +69,7 @@ class DCGAN:
             num_channels=self.config.num_channels,
         ).to(self.device)
 
-        self.G.apply(weights_init)
+        self.G.apply(weights_init_normal)
         print(self.G)
 
         self.D = Discriminator(
@@ -187,7 +78,7 @@ class DCGAN:
             feat_maps_size=self.config.d_feat_maps,
         ).to(self.device)
 
-        self.D.apply(weights_init)
+        self.D.apply(weights_init_normal)
         print(self.D)
 
         self.init_loss_and_optimizer()
@@ -221,13 +112,19 @@ class DCGAN:
     def init_loss_and_optimizer(self) -> None:
         self.criterion: nn.BCELoss = nn.BCELoss()
 
-        self.fixed_noise = torch.randn(64, self.config.latent_size, 1, 1, device=self.device)
+        self.fixed_noise = torch.randn(
+            64, self.config.latent_size, 1, 1, device=self.device
+        )
 
         self.optimizerD = optim.Adam(
-            self.D.parameters(), lr=self.config.learning_rate, betas=(self.config.beta_1, 0.999)
+            self.D.parameters(),
+            lr=self.config.d_learning_rate,
+            betas=(self.config.d_beta_1, self.config.d_beta_2),
         )
         self.optimizerG = optim.Adam(
-            self.G.parameters(), lr=self.config.learning_rate, betas=(self.config.beta_1, 0.999)
+            self.G.parameters(),
+            lr=self.config.g_learning_rate,
+            betas=(self.config.g_beta_1, self.config.d_beta_2),
         )
 
     def plot_training_examples(self):
@@ -262,13 +159,14 @@ class DCGAN:
         print("Starting training loop...")
         for epoch in range(self.config.num_epochs):
             start = timer()
-            for i, data in enumerate(self.dataloader, 0):
-                self.train_batch(iters, real_label, fake_label, epoch, i, data)
+            for batch_num, data in enumerate(self.dataloader, 0):
+                self.train_batch(real_label, fake_label, epoch, batch_num, data)
+                self.plot_fakes_sample(epoch=epoch, batch_num=batch_num)
                 iters += 1
             end = timer()
             print("Epoch %d took %.4fs." % (epoch, end - start))
 
-    def train_batch(self, iters, real_label, fake_label, epoch, i, data):
+    def train_batch(self, real_label, fake_label, epoch, i, data):
         # Update D - max log(D(x)) + log(1 - D(G(z))
         ############################################
         # Train with real batch
@@ -325,9 +223,9 @@ class DCGAN:
         # Update G
         self.optimizerG.step()
 
-        self.log_batch_stats(iters, epoch, i, D_x, D_G_z1, errD, errG, D_G_z2)
+        self.log_batch_stats(epoch, i, D_x, D_G_z1, errD, errG, D_G_z2)
 
-    def log_batch_stats(self, iters, epoch, i, D_x, D_G_z1, errD, errG, D_G_z2):
+    def log_batch_stats(self, epoch, i, D_x, D_G_z1, errD, errG, D_G_z2):
         if i % 50 == 0:
             print(
                 "[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f"
@@ -347,22 +245,18 @@ class DCGAN:
         self.G_losses.append(errG.item())
         self.D_losses.append(errD.item())
 
-        if (epoch % 5 == 0) and (i == len(self.dataloader) - 1):
-            print("End of %d-th epoch:" % epoch)
+    def plot_fakes_sample(self, epoch, batch_num):
+        if (epoch % 5 == 0) and (batch_num == len(self.dataloader) - 1):
             with torch.no_grad():
                 fake = self.G(self.fixed_noise).detach().cpu()
                 self.plot_current_fake(fake, epoch, False)
 
-        if (epoch == self.config.num_epochs - 1) and (i == len(self.dataloader) - 1):
-            print("End result:")
+        if (epoch == self.config.num_epochs - 1) and (
+            batch_num == len(self.dataloader) - 1
+        ):
             with torch.no_grad():
                 fake = self.G(self.fixed_noise).detach().cpu()
                 self.plot_current_fake(fake, epoch, True)
-
-        # if (iters % 500 == 0) or ((epoch == self.num_epochs - 1) and (i == len(self.dataloader) - 1)):
-        #     with torch.no_grad():
-        #         fake = self.G(self.fixed_noise).detach().cpu()
-        #         self.img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
 
     def plot_losses(self):
         plt.figure(figsize=(10, 5))
@@ -386,7 +280,7 @@ class DCGAN:
                 (1, 2, 0),
             )
         )
-        plt.savefig(self.config.results_root + "epoch%d.png" % (epoch))
+        plt.savefig(self.config.intermediates_root + "epoch%d.png" % (epoch))
         print("Figure saved.")
 
     # %%capture
@@ -407,13 +301,45 @@ class DCGAN:
 
         HTML(ani.to_jshtml())
 
+    def generate_fake_results(self):
+        self.fixed_noise = torch.randn(
+            2048, self.config.latent_size, 1, 1, device=self.device
+        )
+
+        with torch.no_grad():
+            generated_set = self.G(self.fixed_noise).detach().cpu()
+            for i, generated_img in enumerate(generated_set):
+                vutils.save_image(
+                    generated_img,
+                    self.config.output_root + "fake_%d.png" % (i),
+                    normalize=True,
+                    padding=0,
+                )
+
 
 # %%capture
 dataroot = "~/Thesis/data/"
-results_root = "/home/ksp/Thesis/src/Thesis/GANs/DCGAN/results/"
 cats_dataroot = dataroot + "cats_only/"
 dogs_dataroot = dataroot + "dogs_only/"
 wildlife_dataroot = dataroot + "wildlife_only/"
+
+results_root = "/home/ksp/Thesis/src/Thesis/GANs/DCGAN/results/"
+
+now = datetime.now()  # current date and time
+
+timestamp: str = now.strftime("%m_%d_%Y__%H_%M_%S")
+
+intermediates_root = "%s%s/intermediates/" % (
+    results_root,
+    timestamp,
+)
+output_root = "%s%s/output/" % (
+    results_root,
+    timestamp,
+)
+
+makedirs(intermediates_root)
+makedirs(output_root)
 
 config: Config = Config(
     num_gpu=1,
@@ -421,19 +347,26 @@ config: Config = Config(
     d_feat_maps=64,
     num_channels=3,
     dataroot=dogs_dataroot,
-    results_root=results_root,
+    intermediates_root=intermediates_root,
+    output_root=output_root,
     dataloader_num_workers=12,
     image_size=64,
     latent_size=100,
     batch_size=32,
     num_epochs=100,
-    learning_rate=0.0002,
-    beta_1=0.5,
+    g_learning_rate=0.0002,
+    d_learning_rate=0.0002,
+    g_beta_1=0.5,
+    g_beta_2=0.999,
+    d_beta_1=0.5,
+    d_beta_2=0.999,
 )
 
 dcgan = DCGAN(config=config)
 dcgan.train_and_plot()
+dcgan.generate_fake_results()
 
 # %%
-torch.cuda.empty_cache()
+dcgan.generate_fake_results()
+
 # %%

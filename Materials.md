@@ -46,6 +46,7 @@
 
 2018
 
+- [Are GANs Created Equal? A Large-Scale Study](https://arxiv.org/abs/1711.10337)
 - [Transferring GANs: generating images from limited data](https://arxiv.org/abs/1805.01677)
 - [Spectral Normalization for Generative Adversarial Networks](https://arxiv.org/abs/1802.05957v1)
 - [Progressive Growing of GANs for Improved Quality, Stability, and Variation](https://arxiv.org/abs/1710.10196v3)
@@ -54,6 +55,7 @@
 
 - [RoCGAN: Robust Conditional GAN](https://arxiv.org/abs/1805.08657)
 - [A Large-Scale Study on Regularization and Normalization in GANs]()
+- [BigGAN - Large Scale GAN Training for High Fidelity Natural Image Synthesis](https://arxiv.org/abs/1809.11096)
 
 2020  
 
@@ -216,7 +218,8 @@
 - https://github.com/soumith/ganhacks
 - https://machinelearningmastery.com/how-to-code-generative-adversarial-network-hacks/
 - https://machinelearningmastery.com/how-to-train-stable-generative-adversarial-networks/
-- https://chloes-dl.com/2019/11/19/tricks-and-tips-for-training-a-gan/
+- [!!!Tricks and Tips for Training a GAN](https://chloes-dl.com/2019/11/19/tricks-and-tips-for-training-a-gan/)
+- [Advances in Generative Adversarial Networks (GANs)](https://beyondminds.ai/blog/advances-in-generative-adversarial-networks-gans/)
 - https://distill.pub/2016/deconv-checkerboard/
 - https://medium.com/intel-student-ambassadors/tips-on-training-your-gans-faster-and-achieve-better-results-9200354acaa5
 - https://www.kaggle.com/c/generative-dog-images/overview/evaluation
@@ -229,6 +232,7 @@
 - [From GAN to WGAN](https://lilianweng.github.io/lil-log/2017/08/20/from-GAN-to-WGAN.html#improved-gan-training)
 - [This Will Change the Way You Look at GANs - More mode collapse with nice gifs](https://towardsdatascience.com/this-will-change-the-way-you-look-at-gans-9992af250454)
 - https://github.com/lucidrains/lightweight-gan - https://openreview.net/forum?id=1Fqg133qRaI
+- [GAN — Ways to improve GAN performance](https://towardsdatascience.com/gan-ways-to-improve-gan-performance-acf37f9f59b)
 - [Training GANs with limited data](https://medium.com/swlh/training-gans-with-limited-data-22a7c8ffce78)
 
 ## Others
