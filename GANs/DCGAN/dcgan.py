@@ -2,16 +2,11 @@
 # Main change is refactoring into a class as a base for pipeline, saving of intermediate results and
 # visualizing - kpresnakov
 
-# To add a new cell, type '# %%'
-# To add a new markdown cell, type '# %% [markdown]'
-# %%
 from __future__ import print_function
-from os import makedirs
 
 #%matplotlib inline
 import random
 from timeit import default_timer as timer
-from datetime import datetime
 
 # mport wandb
 
@@ -54,11 +49,7 @@ class DCGAN:
         self.config: Config = config
         self.init_torch()
 
-        self.device = torch.device(
-            "cuda:0"
-            if (torch.cuda.is_available() and self.config.num_gpu > 0)
-            else "cpu"
-        )
+        self.device = torch.device("cuda:0" if (torch.cuda.is_available() and self.config.num_gpu > 0) else "cpu")
 
         self.init_dataset_and_loader()
 
@@ -112,9 +103,7 @@ class DCGAN:
     def init_loss_and_optimizer(self) -> None:
         self.criterion: nn.BCELoss = nn.BCELoss()
 
-        self.fixed_noise = torch.randn(
-            64, self.config.latent_size, 1, 1, device=self.device
-        )
+        self.fixed_noise = torch.randn(64, self.config.latent_size, 1, 1, device=self.device)
 
         self.optimizerD = optim.Adam(
             self.D.parameters(),
@@ -129,23 +118,21 @@ class DCGAN:
 
     def plot_training_examples(self):
         real_batch = next(iter(self.dataloader))
-        plt.figure(figsize=(8, 8))
+        fig = plt.figure(figsize=(8, 8))
         plt.axis("off")
         plt.title("Training Images")
         plt.imshow(
             np.transpose(
-                vutils.make_grid(
-                    real_batch[0].to(self.device)[:64], padding=2, normalize=True
-                ).cpu(),
+                vutils.make_grid(real_batch[0].to(self.device)[:64], padding=2, normalize=True).cpu(),
                 (1, 2, 0),
             )
         )
+        plt.close(fig)
 
     def train_and_plot(self):
         self.plot_training_examples()
         self.train()
         self.plot_losses()
-        # self.plot_results_animation()
 
     def train(self):
         self.img_list = []
@@ -157,14 +144,17 @@ class DCGAN:
         fake_label = 0
 
         print("Starting training loop...")
+        start_training = timer()
         for epoch in range(self.config.num_epochs):
-            start = timer()
+            start_epoch = timer()
             for batch_num, data in enumerate(self.dataloader, 0):
                 self.train_batch(real_label, fake_label, epoch, batch_num, data)
                 self.plot_fakes_sample(epoch=epoch, batch_num=batch_num)
                 iters += 1
-            end = timer()
-            print("Epoch %d took %.4fs." % (epoch, end - start))
+            end_epoch = timer()
+            print("Epoch %d took %.4fs." % (epoch, end_epoch - start_epoch))
+        end_training = timer()
+        print("Training for %d took %.4fs." % (self.config.num_epochs, end_training - start_training))
 
     def train_batch(self, real_label, fake_label, epoch, i, data):
         # Update D - max log(D(x)) + log(1 - D(G(z))
@@ -173,9 +163,7 @@ class DCGAN:
         self.D.zero_grad()
         real = data[0].to(self.device)
         b_size = real.size(0)
-        label = torch.full(
-            (b_size,), real_label, dtype=torch.float32, device=self.device
-        )
+        label = torch.full((b_size,), real_label, dtype=torch.float32, device=self.device)
 
         # Forward pass real batch through D
         output = self.D(real).view(-1)
@@ -251,15 +239,13 @@ class DCGAN:
                 fake = self.G(self.fixed_noise).detach().cpu()
                 self.plot_current_fake(fake, epoch, False)
 
-        if (epoch == self.config.num_epochs - 1) and (
-            batch_num == len(self.dataloader) - 1
-        ):
+        if (epoch == self.config.num_epochs - 1) and (batch_num == len(self.dataloader) - 1):
             with torch.no_grad():
                 fake = self.G(self.fixed_noise).detach().cpu()
                 self.plot_current_fake(fake, epoch, True)
 
     def plot_losses(self):
-        plt.figure(figsize=(10, 5))
+        fig = plt.figure(figsize=(10, 5))
         plt.title("G and D loss during trainning")
         plt.plot(self.G_losses, label="G")
         plt.plot(self.D_losses, label="D")
@@ -267,23 +253,22 @@ class DCGAN:
         plt.ylabel("Loss")
         plt.legend()
         plt.show()
+        plt.close(fig)
 
     def plot_current_fake(self, fake_batch, epoch, isFinal):
-        plt.figure(figsize=(16, 16))
+        fig = plt.figure(figsize=(16, 16))
         plt.axis("off")
         plt.title("Images in" + ("final epoch" if isFinal else "epoch %d" % (epoch)))
         plt.imshow(
             np.transpose(
-                vutils.make_grid(
-                    fake_batch.to(self.device)[:64], padding=2, normalize=True
-                ).cpu(),
+                vutils.make_grid(fake_batch.to(self.device)[:64], padding=2, normalize=True).cpu(),
                 (1, 2, 0),
             )
         )
         plt.savefig(self.config.intermediates_root + "epoch%d.png" % (epoch))
+        plt.close(fig)
         print("Figure saved.")
 
-    # %%capture
     def plot_results_animation(self):
         import matplotlib
 
@@ -291,20 +276,13 @@ class DCGAN:
 
         fig = plt.figure(figsize=(12, 12))
         plt.axis("off")
-        ims = [
-            [plt.imshow(np.transpose(i, (1, 2, 0)), animated=True)]
-            for i in self.img_list
-        ]
-        ani = animation.ArtistAnimation(
-            fig, ims, interval=1000, repeat_delay=1000, blit=True
-        )
+        ims = [[plt.imshow(np.transpose(i, (1, 2, 0)), animated=True)] for i in self.img_list]
+        ani = animation.ArtistAnimation(fig, ims, interval=1000, repeat_delay=1000, blit=True)
 
         HTML(ani.to_jshtml())
 
     def generate_fake_results(self):
-        self.fixed_noise = torch.randn(
-            2048, self.config.latent_size, 1, 1, device=self.device
-        )
+        self.fixed_noise = torch.randn(2048, self.config.latent_size, 1, 1, device=self.device)
 
         with torch.no_grad():
             generated_set = self.G(self.fixed_noise).detach().cpu()
@@ -315,58 +293,3 @@ class DCGAN:
                     normalize=True,
                     padding=0,
                 )
-
-
-# %%capture
-dataroot = "~/Thesis/data/"
-cats_dataroot = dataroot + "cats_only/"
-dogs_dataroot = dataroot + "dogs_only/"
-wildlife_dataroot = dataroot + "wildlife_only/"
-
-results_root = "/home/ksp/Thesis/src/Thesis/GANs/DCGAN/results/"
-
-now = datetime.now()  # current date and time
-
-timestamp: str = now.strftime("%m_%d_%Y__%H_%M_%S")
-
-intermediates_root = "%s%s/intermediates/" % (
-    results_root,
-    timestamp,
-)
-output_root = "%s%s/output/" % (
-    results_root,
-    timestamp,
-)
-
-makedirs(intermediates_root)
-makedirs(output_root)
-
-config: Config = Config(
-    num_gpu=1,
-    g_feat_maps=64,
-    d_feat_maps=64,
-    num_channels=3,
-    dataroot=dogs_dataroot,
-    intermediates_root=intermediates_root,
-    output_root=output_root,
-    dataloader_num_workers=12,
-    image_size=64,
-    latent_size=100,
-    batch_size=32,
-    num_epochs=100,
-    g_learning_rate=0.0002,
-    d_learning_rate=0.0002,
-    g_beta_1=0.5,
-    g_beta_2=0.999,
-    d_beta_1=0.5,
-    d_beta_2=0.999,
-)
-
-dcgan = DCGAN(config=config)
-dcgan.train_and_plot()
-dcgan.generate_fake_results()
-
-# %%
-dcgan.generate_fake_results()
-
-# %%
