@@ -95,6 +95,7 @@
 #### General Convnets
 
 2021
+
 - [RepVGG: Making VGG-style ConvNets Great Again](https://arxiv.org/abs/2101.03697v1)
 
 #### U-Nets
@@ -102,6 +103,7 @@
 2015
 
 - :heavy_check_mark: [U-Net: Convolutional Networks for Biomedical Image Segmentation](https://arxiv.org/pdf/1505.04597v1.pdf) [[sample code - tf2]](https://github.com/jakeret/unet)
+
 2016
 
 - [U-shaped Networks for Shape from Light Field](http://www.bmva.org/bmvc/2016/papers/paper037/index.html)
@@ -131,7 +133,7 @@
 
 2021
 
-- [Image-to-Image Translation: Methods and Applications](https://arxiv.org/abs/2101.08629)
+- [Image-to-Image Translation: Methods andApplications](https://arxiv.org/abs/2101.08629)
 
 2020
 
@@ -141,7 +143,6 @@
 - [Model-based occlusion disentanglement for image-to-image translation](https://arxiv.org/abs/2004.01071v2)
 - [Old Photo Restoration via Deep Latent Space Translation](https://arxiv.org/abs/2009.07047v1)
 - [SPA-GAN: Spatial Attention GAN for Image-to-Image Translation](https://arxiv.org/abs/1908.06616)
-- [StarGAN v2: Diverse Image Synthesis for Multiple Domains](https://arxiv.org/abs/1912.01865)
 
 2018
 
@@ -150,10 +151,6 @@
 2017
 
 - [Be Your Own Prada - Fashion Synthesis with Structural Coherence](https://arxiv.org/abs/1710.07346)
-
-2016
-
-- :heavy_check_mark: [Image-to-Image Translation with Conditional Adversarial Networks](https://arxiv.org/abs/1611.07004)
 
 
 ### Talks I2I
@@ -185,6 +182,10 @@
 
 - [Local Class-Specific and Global Image-Level Generative Adversarial Networks for Semantic-Guided Scene Generation](https://arxiv.org/abs/1912.12215v3)
 - [YOU ONLY NEED ADVERSARIAL SUPERVISION FOR SEMANTIC IMAGE SYNTHESIS](https://arxiv.org/abs/2012.04781v1)
+- :heavy_check_mark: [Semantic Image Synthesis with Spatially-Adaptive Normalization](https://arxiv.org/abs/1903.07291v2)
+- :heavy_check_mark: [High-Resolution Image Synthesis and Semantic Manipulation with Conditional GANs](https://arxiv.org/abs/1711.11585v2)
+- :heavy_check_mark: [Image-to-Image Translation with Conditional Adversarial Networks](https://arxiv.org/abs/1611.07004)
+- :heavy_check_mark: [Unpaired Image-to-Image Translation using Cycle-Consistent Adversarial Networks](https://arxiv.org/abs/1703.10593v7)
 
 ### Other (SS)
 
@@ -213,7 +214,6 @@
 
 ## GANs Tips and tricks
 
-- [A Leap into the Future: Generative Adversarial Networks](https://medium.com/datadriveninvestor/a-leap-into-the-future-generative-adversarial-networks-96a780ed8ee6)
 - [GAN losses](https://towardsdatascience.com/gan-objective-functions-gans-and-their-variations-ad77340bce3c)
 - https://github.com/soumith/ganhacks
 - https://machinelearningmastery.com/how-to-code-generative-adversarial-network-hacks/
@@ -237,4 +237,4 @@
 
 ## Others
 
-- https://phys.org/news/2019-05-cosmogan-neural-network-dark.ht
+- https://phys.org/news/2019-05-cosmogan-neural-network-dark.html
