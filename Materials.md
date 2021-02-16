@@ -152,7 +152,6 @@
 
 - [Be Your Own Prada - Fashion Synthesis with Structural Coherence](https://arxiv.org/abs/1710.07346)
 
-
 ### Talks I2I
 
 - [Recent Advances in Unsupervised Image-to-Image Translation](https://www.microsoft.com/en-us/research/video/recent-advances-in-unsupervised-image-to-image-translation/)
@@ -190,6 +189,14 @@
 ### Other (SS)
 
 - https://ai.googleblog.com/2020/11/using-gans-to-create-fantastical.html
+
+---
+
+## Novel View Synthesis from Multiplanar Views
+
+### Papers (MV)
+
+- [NeRF: Representing Scenes asNeural Radiance Fields for View Synthesis](https://arxiv.org/abs/2003.08934v2)
 
 ## CNNs General
 
