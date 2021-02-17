@@ -1,13 +1,17 @@
 # %%
 import dataclasses
-import json
 from datetime import datetime
 from os import makedirs
+from timeit import default_timer as timer
 
 from config import Config
 from dcgan import DCGAN
+from datawriter import DataWriter
 
-dataroot = "~/Thesis/data/"
+from pytorch_fid.fid_score import calculate_fid_given_paths
+
+
+dataroot = "/home/ksp/Thesis/data/"
 cats_dataroot = dataroot + "cats_only/"
 dogs_dataroot = dataroot + "dogs_only/"
 wildlife_dataroot = dataroot + "wildlife_only/"
@@ -37,10 +41,17 @@ def setup_directories_with_timestamp():
     }
 
 
-def run_dcgan(config: Config):
-    dcgan = DCGAN(config=config)
+def run_dcgan(config: Config) -> float:
+    """Trains the GAN, saves intermediate results and generates 2048 fake samples from the generator
+    Return elapsed time for training the net
+    """
+    dcgan = DCGAN(config=config, use_amp=True)
+    start = timer()
     dcgan.train_and_plot()
+    elapsed_time: float = timer() - start
     dcgan.generate_fake_results()
+
+    return elapsed_time
 
 
 blueprint_config: Config = Config(
@@ -49,13 +60,14 @@ blueprint_config: Config = Config(
     d_feat_maps=64,
     num_channels=3,
     dataroot=dogs_dataroot,
+    experiment_output_root="placeholder",
     intermediates_root="placeholder",
     output_root="placeholder",
-    dataloader_num_workers=12,
+    dataloader_num_workers=12,  # yes
     image_size=64,
     latent_size=100,
-    batch_size=64,
-    num_epochs=100,
+    batch_size=8,  # yes
+    num_epochs=100,  # yes
     g_learning_rate=0.0002,
     d_learning_rate=0.0002,
     g_beta_1=0.5,
@@ -64,31 +76,27 @@ blueprint_config: Config = Config(
     d_beta_2=0.999,
 )
 
-num_epochs_list = [5, 5, 5, 5]
-
-for num_epochs in num_epochs_list:
-    dirs = setup_directories_with_timestamp()
-    config = dataclasses.replace(blueprint_config)
-    config.num_epochs = num_epochs
-    config.intermediates_root = dirs["intermediates"]
-    config.output_root = dirs["output"]
-
-    with open(dirs["experiment_root"] + "config.json", "w") as text_file:
-        text_file.write(json.dumps(dataclasses.asdict(config), indent=4))
-
-    run_dcgan(config=config)
+num_epochs_list = [100, 200, 300]
 
 
-# %%
-import gc
-import torch
+def run_experiments() -> None:
+    for num_epochs in num_epochs_list:
+        dirs = setup_directories_with_timestamp()
+        config = dataclasses.replace(blueprint_config)
+        config.num_epochs = num_epochs
+        config.intermediates_root = dirs["intermediates"]
+        config.output_root = dirs["output"]
+        config.experiment_output_root = dirs["experiment_root"]
 
-def memReport():
-    objs = gc.get_objects()
-    print(len(objs))
-    for obj in objs:
-        if torch.is_tensor(obj):
-            print(type(obj), obj.size())
+        data_writer = DataWriter(config=config)
+        data_writer.serialize_config()
 
-memReport()
-# %%
+        training_time = run_dcgan(config=config)
+        fid = calculate_fid_given_paths([config.dataroot + "dog/", config.output_root], 50, "cuda:0", 2048)
+
+        data_writer.serialize_results(time=training_time, fid=fid)
+
+        print("FID: %f" % fid)
+
+
+run_experiments()

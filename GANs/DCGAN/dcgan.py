@@ -34,6 +34,8 @@ from config import Config
 from discriminator import Discriminator
 from generator import Generator
 
+from torch.cuda.amp import autocast, GradScaler
+
 
 def weights_init_normal(m):
     classname = m.__class__.__name__
@@ -101,7 +103,7 @@ class DCGAN:
         )
 
     def init_loss_and_optimizer(self) -> None:
-        self.criterion: nn.BCELoss = nn.BCELoss()
+        self.loss: nn.BCELoss = nn.BCELoss()
 
         self.fixed_noise = torch.randn(64, self.config.latent_size, 1, 1, device=self.device)
 
@@ -132,13 +134,12 @@ class DCGAN:
     def train_and_plot(self):
         self.plot_training_examples()
         self.train()
-        self.plot_losses()
+        self.plot_and_save_losses()
 
     def train(self):
         self.img_list = []
         self.G_losses = []
         self.D_losses = []
-        iters = 0
 
         real_label = 1
         fake_label = 0
@@ -149,12 +150,11 @@ class DCGAN:
             start_epoch = timer()
             for batch_num, data in enumerate(self.dataloader, 0):
                 self.train_batch(real_label, fake_label, epoch, batch_num, data)
-                self.plot_fakes_sample(epoch=epoch, batch_num=batch_num)
-                iters += 1
-            end_epoch = timer()
-            print("Epoch %d took %.4fs." % (epoch, end_epoch - start_epoch))
-        end_training = timer()
-        print("Training for %d took %.4fs." % (self.config.num_epochs, end_training - start_training))
+                self.save_fakes_snapshot_if_needed(epoch=epoch, batch_num=batch_num)
+            print("Epoch %d took %.4fs." % (epoch, timer() - start_epoch))
+
+        training_time = timer() - start_training
+        print("Training for %d took %.4fs." % (self.config.num_epochs, training_time))
 
     def train_batch(self, real_label, fake_label, epoch, i, data):
         # Update D - max log(D(x)) + log(1 - D(G(z))
@@ -162,20 +162,20 @@ class DCGAN:
         # Train with real batch
         self.D.zero_grad()
         real = data[0].to(self.device)
-        b_size = real.size(0)
-        label = torch.full((b_size,), real_label, dtype=torch.float32, device=self.device)
+        batch_size = real.size(0)
+        label = torch.full((batch_size,), real_label, dtype=torch.float32, device=self.device)
 
         # Forward pass real batch through D
         output = self.D(real).view(-1)
         # Loss on real batch
-        errD_real = self.criterion(output, label)
+        loss_D_real = self.loss(output, label)
 
         # Calculate gradients for D
-        errD_real.backward()
+        loss_D_real.backward()
         D_x = output.mean().item()
 
         # Train with fake batch
-        noise = torch.randn(b_size, self.config.latent_size, 1, 1, device=self.device)
+        noise = torch.randn(batch_size, self.config.latent_size, 1, 1, device=self.device)
 
         # Generate fake batch using G
         fake = self.G(noise)
@@ -185,14 +185,14 @@ class DCGAN:
         output = self.D(fake.detach()).view(-1)
 
         # Loss on fake batch
-        errD_fake = self.criterion(output, label)
+        lost_D_fake = self.loss(output, label)
 
         # Calculate gradients for D
-        errD_fake.backward()
+        lost_D_fake.backward()
 
         D_G_z1 = output.mean().item()
 
-        errD = errD_real + errD_fake  # how
+        loss_D = loss_D_real + lost_D_fake  # how
 
         self.optimizerD.step()
 
@@ -203,17 +203,82 @@ class DCGAN:
         label.fill_(real_label)
         output = self.D(fake).view(-1)
 
-        errG = self.criterion(output, label)
-        errG.backward()
+        loss_G = self.loss(output, label)
+        loss_G.backward()
 
         D_G_z2 = output.mean().item()
 
         # Update G
         self.optimizerG.step()
 
-        self.log_batch_stats(epoch, i, D_x, D_G_z1, errD, errG, D_G_z2)
+        self.log_batch_stats(epoch, i, D_x, D_G_z1, loss_D, loss_G, D_G_z2)
 
-    def log_batch_stats(self, epoch, i, D_x, D_G_z1, errD, errG, D_G_z2):
+    def train_batch_amp(self, real_label, fake_label, epoch, i, data, scaler: GradScaler):
+        # Update D - max log(D(x)) + log(1 - D(G(z))
+        ############################################
+        # Train with real batch
+        self.D.zero_grad()
+        real = data[0].to(self.device)
+        batch_size = real.size(0)
+        label = torch.full((batch_size,), real_label, dtype=torch.float32, device=self.device)
+
+        with autocast():
+            # Forward pass real batch through D
+            output = self.D(real).view(-1)
+            # Loss on real batch
+            loss_D_real = self.loss(output, label)
+
+        # Calculate gradients for D
+        scaler.scale(loss_D_real).backward()
+        D_x = output.mean().item()
+
+        # Train with fake batch
+        noise = torch.randn(batch_size, self.config.latent_size, 1, 1, device=self.device)
+
+        # Generate fake batch using G
+        with autocast():
+            fake = self.G(noise)
+
+        label.fill_(fake_label)
+
+        with autocast():
+            # Forward pass fake batch through D
+            output = self.D(fake.detach()).view(-1)
+            # Loss on fake batch
+            lost_D_fake = self.loss(output, label)
+
+        # Calculate gradients for D
+        scaler.scale(lost_D_fake).backward()
+
+        D_G_z1 = output.mean().item()
+
+        with autocast():
+            loss_D = loss_D_real + lost_D_fake
+
+        scaler(self.optimizerD).step()
+
+        # Update G - max log(D(G(z)))
+        #############################
+        self.G.zero_grad()
+
+        label.fill_(real_label)
+
+        with autocast():
+            output = self.D(fake).view(-1)
+            loss_G = self.loss(output, label)
+
+        scaler.scale(loss_G).backward()
+
+        D_G_z2 = output.mean().item()
+
+        # Update G
+        scaler(self.optimizerG).step()
+
+        scaler.update()
+
+        self.log_batch_stats(epoch, i, D_x, D_G_z1, loss_D, loss_G, D_G_z2)
+
+    def log_batch_stats(self, epoch, i, D_x, D_G_z1, loss_D, loss_G, D_G_z2):
         if i % 50 == 0:
             print(
                 "[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f"
@@ -222,29 +287,29 @@ class DCGAN:
                     self.config.num_epochs,
                     i,
                     len(self.dataloader),
-                    errD.item(),
-                    errG.item(),
+                    loss_D.item(),
+                    loss_G.item(),
                     D_x,
                     D_G_z1,
                     D_G_z2,
                 )
             )
 
-        self.G_losses.append(errG.item())
-        self.D_losses.append(errD.item())
+        self.G_losses.append(loss_G.item())
+        self.D_losses.append(loss_D.item())
 
-    def plot_fakes_sample(self, epoch, batch_num):
+    def save_fakes_snapshot_if_needed(self, epoch, batch_num):
         if (epoch % 5 == 0) and (batch_num == len(self.dataloader) - 1):
             with torch.no_grad():
                 fake = self.G(self.fixed_noise).detach().cpu()
-                self.plot_current_fake(fake, epoch, False)
+                self.save_current_fakes_snapshot(fake, epoch, False)
 
         if (epoch == self.config.num_epochs - 1) and (batch_num == len(self.dataloader) - 1):
             with torch.no_grad():
                 fake = self.G(self.fixed_noise).detach().cpu()
-                self.plot_current_fake(fake, epoch, True)
+                self.save_current_fakes_snapshot(fake, epoch, True)
 
-    def plot_losses(self):
+    def plot_and_save_losses(self):
         fig = plt.figure(figsize=(10, 5))
         plt.title("G and D loss during trainning")
         plt.plot(self.G_losses, label="G")
@@ -253,9 +318,10 @@ class DCGAN:
         plt.ylabel("Loss")
         plt.legend()
         plt.show()
+        plt.savefig(self.config.experiment_output_root + "losses.png")
         plt.close(fig)
 
-    def plot_current_fake(self, fake_batch, epoch, isFinal):
+    def save_current_fakes_snapshot(self, fake_batch, epoch, isFinal):
         fig = plt.figure(figsize=(16, 16))
         plt.axis("off")
         plt.title("Images in" + ("final epoch" if isFinal else "epoch %d" % (epoch)))
