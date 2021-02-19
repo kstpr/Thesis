@@ -1,3 +1,4 @@
 *.png
 *.pyc
 *.json
+GANs/DCGAN/__pycache__/
