@@ -1,5 +1,5 @@
 import torch.nn as nn
-
+import torch.nn.functional as F
 
 class Generator(nn.Module):
     def __init__(self, num_gpu, latent_size, feat_maps_size, num_channels):

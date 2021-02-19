@@ -213,71 +213,6 @@ class DCGAN:
 
         self.log_batch_stats(epoch, i, D_x, D_G_z1, loss_D, loss_G, D_G_z2)
 
-    def train_batch_amp(self, real_label, fake_label, epoch, i, data, scaler: GradScaler):
-        # Update D - max log(D(x)) + log(1 - D(G(z))
-        ############################################
-        # Train with real batch
-        self.D.zero_grad()
-        real = data[0].to(self.device)
-        batch_size = real.size(0)
-        label = torch.full((batch_size,), real_label, dtype=torch.float32, device=self.device)
-
-        with autocast():
-            # Forward pass real batch through D
-            output = self.D(real).view(-1)
-            # Loss on real batch
-            loss_D_real = self.loss(output, label)
-
-        # Calculate gradients for D
-        scaler.scale(loss_D_real).backward()
-        D_x = output.mean().item()
-
-        # Train with fake batch
-        noise = torch.randn(batch_size, self.config.latent_size, 1, 1, device=self.device)
-
-        # Generate fake batch using G
-        with autocast():
-            fake = self.G(noise)
-
-        label.fill_(fake_label)
-
-        with autocast():
-            # Forward pass fake batch through D
-            output = self.D(fake.detach()).view(-1)
-            # Loss on fake batch
-            lost_D_fake = self.loss(output, label)
-
-        # Calculate gradients for D
-        scaler.scale(lost_D_fake).backward()
-
-        D_G_z1 = output.mean().item()
-
-        with autocast():
-            loss_D = loss_D_real + lost_D_fake
-
-        scaler(self.optimizerD).step()
-
-        # Update G - max log(D(G(z)))
-        #############################
-        self.G.zero_grad()
-
-        label.fill_(real_label)
-
-        with autocast():
-            output = self.D(fake).view(-1)
-            loss_G = self.loss(output, label)
-
-        scaler.scale(loss_G).backward()
-
-        D_G_z2 = output.mean().item()
-
-        # Update G
-        scaler(self.optimizerG).step()
-
-        scaler.update()
-
-        self.log_batch_stats(epoch, i, D_x, D_G_z1, loss_D, loss_G, D_G_z2)
-
     def log_batch_stats(self, epoch, i, D_x, D_G_z1, loss_D, loss_G, D_G_z2):
         if i % 50 == 0:
             print(
@@ -317,7 +252,6 @@ class DCGAN:
         plt.xlabel("iterations")
         plt.ylabel("Loss")
         plt.legend()
-        plt.show()
         plt.savefig(self.config.experiment_output_root + "losses.png")
         plt.close(fig)
 
