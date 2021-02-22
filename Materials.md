@@ -87,7 +87,7 @@
 - [Image Quality Assessment: From Error Visibility to Structural Similarity](http://www.cns.nyu.edu/pub/lcv/wang03-preprint.pdf)
 - [Context Encoders: Feature Learning by Inpainting](https://arxiv.org/abs/1604.07379)
 - [Perceptual losses for real-time style transfer and super-resolution.]()
-
+ 
 ## Building Blocks
 
 ### Papers BB
@@ -185,6 +185,7 @@
 - :heavy_check_mark: [High-Resolution Image Synthesis and Semantic Manipulation with Conditional GANs](https://arxiv.org/abs/1711.11585v2)
 - :heavy_check_mark: [Image-to-Image Translation with Conditional Adversarial Networks](https://arxiv.org/abs/1611.07004)
 - :heavy_check_mark: [Unpaired Image-to-Image Translation using Cycle-Consistent Adversarial Networks](https://arxiv.org/abs/1703.10593v7)
+- Learning to predict layout-to-image conditional convolutions for semantic image synthesis.(2019)
 
 ### Other (SS)
 
@@ -245,3 +246,4 @@
 ## Others
 
 - https://phys.org/news/2019-05-cosmogan-neural-network-dark.html
+- [NeRF Explosion 2020](https://dellaert.github.io/NeRF/) !!! IMPORTANT
