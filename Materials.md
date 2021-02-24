@@ -16,6 +16,10 @@
 
 - [NIPS 2016 Tutorial: Generative Adversarial Networks](https://arxiv.org/abs/1701.00160)
 
+2018
+
+- [cGANs with projection discriminator.]()
+
 2019
 
 - [Self-Attention Generative Adversarial Networks](https://arxiv.org/abs/1805.08318v2)
@@ -62,6 +66,7 @@
 - [Training Generative Adversarial Networks with Limited Data](https://arxiv.org/abs/2006.06676)
 - [Your GAN is Secretly an Energy-based Model and You Should Use Discriminator Driven Latent Sampling](https://arxiv.org/abs/2003.06060v2)
 - [Mind2Mind : Transfer Learning for GANs](https://arxiv.org/abs/1906.11613)
+- [Differentiable Augmentationfor Data-Efficient GAN Training](https://arxiv.org/abs/2006.10738v4)
 
 2021
 
