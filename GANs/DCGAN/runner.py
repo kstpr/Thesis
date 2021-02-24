@@ -1,20 +1,27 @@
 # %%
 import dataclasses
 from datetime import datetime
-from os import makedirs
+from os import makedirs, path
 from timeit import default_timer as timer
 
-from config import Config
+from config import Config, DataRoot
 from dcgan import DCGAN
 from datawriter import DataWriter
 
 from pytorch_fid.fid_score import calculate_fid_given_paths
 
 
-dataroot = "/home/ksp/Thesis/data/"
-cats_dataroot = dataroot + "cats_only/"
-dogs_dataroot = dataroot + "dogs_only/"
-wildlife_dataroot = dataroot + "wildlife_only/"
+general_dataroot = "/home/ksp/Thesis/data/"
+
+cats_dataroot = DataRoot(
+    dataset_root=path.join(general_dataroot, "cats_only"), immediate_dir=path.join(general_dataroot, "cats_only", "cat")
+)
+dogs_dataroot = DataRoot(
+    dataset_root=path.join(general_dataroot, "dogs_only"), immediate_dir=path.join(general_dataroot, "dogs_only", "dog")
+)
+wildlife_dataroot = DataRoot(
+    dataset_root=path.join(general_dataroot, "wildlife_only"), immediate_dir=path.join(general_dataroot, "wildlife_only", "wild")
+)
 
 results_root = "/home/ksp/Thesis/src/Thesis/GANs/DCGAN/results/"
 
@@ -58,7 +65,7 @@ blueprint_config: Config = Config(
     g_feat_maps=64,
     d_feat_maps=64,
     num_channels=3,
-    dataroot=cats_dataroot,
+    dataroot=wildlife_dataroot,
     experiment_output_root="placeholder",
     intermediates_root="placeholder",
     output_root="placeholder",
@@ -75,14 +82,14 @@ blueprint_config: Config = Config(
     d_beta_2=0.999,
 )
 
-num_epochs_list = [100, 150, 200]
-batch_sizes = [128, 64, 32, 16, 8]
+num_epochs_list = [200]
+batch_sizes = [2, 4]
 
 
-def run_experiments() -> None:
+def run_experiments(tag: str) -> None:
     for num_epochs in num_epochs_list:
         for batch_size in batch_sizes:
-            dirs = setup_directories_with_timestamp("cat_thursday_")
+            dirs = setup_directories_with_timestamp("%s_sat_bs_%d_epochs_%d_" % (tag, batch_size, num_epochs))
             config = dataclasses.replace(blueprint_config)
             config.num_epochs = num_epochs
             config.batch_size = batch_size
@@ -93,14 +100,16 @@ def run_experiments() -> None:
             data_writer = DataWriter(config=config)
             data_writer.serialize_config()
 
+            print(config)
             training_time = run_dcgan(config=config)
-            fid = calculate_fid_given_paths([config.dataroot + "cat/", config.output_root], 50, "cuda:0", 2048)
+            fid = calculate_fid_given_paths([config.dataroot.immediate_dir, config.output_root], 50, "cuda:0", 2048)
 
             data_writer.serialize_results(time=training_time, fid=fid)
 
             print("FID: %f" % fid)
 
 
-run_experiments()
+run_experiments("wild")
+
 
 # %%

@@ -84,7 +84,7 @@ class DCGAN:
 
     def init_dataset_and_loader(self):
         dataset = dset.ImageFolder(
-            root=self.config.dataroot,
+            root=self.config.dataroot.dataset_root,
             transform=transforms.Compose(
                 [
                     transforms.Resize(self.config.image_size),
@@ -258,7 +258,7 @@ class DCGAN:
     def save_current_fakes_snapshot(self, fake_batch, epoch, isFinal):
         fig = plt.figure(figsize=(16, 16))
         plt.axis("off")
-        plt.title("Images in" + ("final epoch" if isFinal else "epoch %d" % (epoch)))
+        plt.title("Images in " + ("final epoch" if isFinal else "epoch %d" % (epoch)))
         plt.imshow(
             np.transpose(
                 vutils.make_grid(fake_batch.to(self.device)[:64], padding=2, normalize=True).cpu(),

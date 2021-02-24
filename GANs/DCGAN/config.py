@@ -1,6 +1,11 @@
 from dataclasses import dataclass
 
 @dataclass
+class DataRoot:
+    dataset_root: str  # in a format expected by the dataloader; contain classes folders, unused by our needs
+    immediate_dir: str  # folder directly containing the actual images; needed for calculating the FID score
+
+@dataclass
 class Config:
     num_gpu: int
 
@@ -10,7 +15,7 @@ class Config:
     num_channels: int  # the number of channels for G's output and D's input
 
     # Data parameters
-    dataroot: str
+    dataroot: DataRoot
     experiment_output_root: str # parent output root - save everything that's not images here
     intermediates_root: str  # intermediate results in the form of generator samples and loss history
     output_root: str  # final results as individual fake images generated from fixed noise
