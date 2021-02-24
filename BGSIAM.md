@@ -25,11 +25,17 @@ Semantic View Synthesis - https://arxiv.org/abs/2008.10598v1 - svs + free viewpo
 StyleFlow : Attribute-conditioned Exploration of StyleGAN-generated Images using Conditional Continuous Normalizing Flows (ACM TOG 2021)
 
 Local Class-Specific and Global Image-Level Generative Adversarial Networks for Semantic-Guided Scene Generation
+
 [OASIS] You Only Need Adversarial Supervision for Semantic Image Synthesis
+
 [CC-FPSE] Learning to Predict Layout-to-image Conditional Convolutions for Semantic Image Synthesis
+
 Cross-domain Correspondence Learning for Exemplar-based Image Translation
+
 Image synthesis with semantic region-adaptive normalization
+
 Edge guided gans with semantic preserving for semantic image synthesis.
+
 Focal Frequency Loss for Generative Models
 
 ---
