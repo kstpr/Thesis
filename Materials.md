@@ -60,6 +60,7 @@
 - [RoCGAN: Robust Conditional GAN](https://arxiv.org/abs/1805.08657)
 - [A Large-Scale Study on Regularization and Normalization in GANs]()
 - [BigGAN - Large Scale GAN Training for High Fidelity Natural Image Synthesis](https://arxiv.org/abs/1809.11096)
+- [THE UNUSUAL EFFECTIVENESS OF AVERAGING IN GAN TRAINING]()
 
 2020  
 
