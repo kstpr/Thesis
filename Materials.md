@@ -67,6 +67,7 @@
 - [Your GAN is Secretly an Energy-based Model and You Should Use Discriminator Driven Latent Sampling](https://arxiv.org/abs/2003.06060v2)
 - [Mind2Mind : Transfer Learning for GANs](https://arxiv.org/abs/1906.11613)
 - [Differentiable Augmentationfor Data-Efficient GAN Training](https://arxiv.org/abs/2006.10738v4)
+- [<Exponential Moving Average> Large scale GAN training for high fidelity natural image synthesis.]()
 
 2021
 
@@ -91,8 +92,10 @@
 - [Generating Images with Perceptual Similarity Metrics based on Deep Networks](https://arxiv.org/abs/1602.02644)
 - [Image Quality Assessment: From Error Visibility to Structural Similarity](http://www.cns.nyu.edu/pub/lcv/wang03-preprint.pdf)
 - [Context Encoders: Feature Learning by Inpainting](https://arxiv.org/abs/1604.07379)
-- [Perceptual losses for real-time style transfer and super-resolution.]()
- 
+- [MS-SSIM Multiscale structural similarity for image quality assessment.]()
+- [The unreasonable effectiveness of deep features as a perceptual metric.]()
+- [FID GANs trained by a two time-scale update rule converge to a local nash equilibrium.]()
+
 ## Building Blocks
 
 ### Papers BB
