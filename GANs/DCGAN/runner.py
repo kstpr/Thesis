@@ -9,7 +9,7 @@ from dcgan import DCGAN
 from datawriter import DataWriter
 
 from pytorch_fid.fid_score import calculate_fid_given_paths
-
+import wandb
 
 general_dataroot = "/home/ksp/Thesis/data/"
 
@@ -80,11 +80,23 @@ blueprint_config: Config = Config(
     g_beta_2=0.999,
     d_beta_1=0.5,
     d_beta_2=0.999,
+    lr_linear_decay_enabled=True,
+    g_lr_decay_start_epoch = 100,
+    d_lr_decay_start_epoch=100
 )
 
-num_epochs_list = [200]
-batch_sizes = [2, 4]
+num_epochs_list = [50]
+batch_sizes = [16]
 
+def setup_wandb(config: Config):
+    wandb.init(settings=wandb.Settings(start_method='fork'), entity="kpresnakov", project="test")
+
+    wandb_config = wandb.config          # Initialize config
+    wandb_config.batch_size = config.batch_size         # input batch size for training (default: 64)
+    wandb_config.epochs = config.num_epochs             # number of epochs to train (default: 10)
+    wandb_config.g_lr = config.g_learning_rate
+    wandb_config.d_lr = config.d_learning_rate               # learning rate (default: 0.01)
+    wandb_config.log_interval = 10     # how many batches to wait before logging training status
 
 def run_experiments(tag: str) -> None:
     for num_epochs in num_epochs_list:
@@ -96,6 +108,8 @@ def run_experiments(tag: str) -> None:
             config.intermediates_root = dirs["intermediates"]
             config.output_root = dirs["output"]
             config.experiment_output_root = dirs["experiment_root"]
+
+            setup_wandb(config)
 
             data_writer = DataWriter(config=config)
             data_writer.serialize_config()

@@ -8,8 +8,6 @@ from __future__ import print_function
 import random
 from timeit import default_timer as timer
 
-# mport wandb
-
 import torch
 
 import torch.nn as nn
@@ -30,11 +28,13 @@ import matplotlib.animation as animation
 
 from IPython.display import HTML
 
+import wandb
+
 from config import Config
 from discriminator import Discriminator
 from generator import Generator
+import util.visualization as viz_util
 
-from torch.cuda.amp import autocast, GradScaler
 
 
 def weights_init_normal(m):
@@ -55,26 +55,17 @@ class DCGAN:
 
         self.init_dataset_and_loader()
 
-        self.G = Generator(
-            num_gpu=self.config.num_gpu,
-            latent_size=self.config.latent_size,
-            feat_maps_size=self.config.g_feat_maps,
-            num_channels=self.config.num_channels,
-        ).to(self.device)
-
-        self.G.apply(weights_init_normal)
-        print(self.G)
-
-        self.D = Discriminator(
-            num_gpu=self.config.num_gpu,
-            num_channels=self.config.num_channels,
-            feat_maps_size=self.config.d_feat_maps,
-        ).to(self.device)
-
-        self.D.apply(weights_init_normal)
-        print(self.D)
+        self.G = self.init_generator()
+        self.D = self.init_discriminator()
 
         self.init_loss_and_optimizer()
+        self.init_lr_decay_deltas()
+
+        self.img_list = []
+        self.G_losses = []
+        self.D_losses = []
+        self.D_x_vals = []
+        self.G_D_z_vals = []
 
     def init_torch(self) -> None:
         manualSeed = 999
@@ -102,6 +93,31 @@ class DCGAN:
             num_workers=self.config.dataloader_num_workers,
         )
 
+    def init_generator(self) -> Generator:
+        generator = Generator(
+            num_gpu=self.config.num_gpu,
+            latent_size=self.config.latent_size,
+            feat_maps_size=self.config.g_feat_maps,
+            num_channels=self.config.num_channels,
+        ).to(self.device)
+
+        generator.apply(weights_init_normal)
+        print(generator)
+
+        return generator
+
+    def init_discriminator(self) -> Discriminator:
+        discriminator = Discriminator(
+            num_gpu=self.config.num_gpu,
+            num_channels=self.config.num_channels,
+            feat_maps_size=self.config.d_feat_maps,
+        ).to(self.device)
+
+        discriminator.apply(weights_init_normal)
+        print(discriminator)
+
+        return discriminator
+
     def init_loss_and_optimizer(self) -> None:
         self.loss: nn.BCELoss = nn.BCELoss()
 
@@ -118,29 +134,26 @@ class DCGAN:
             betas=(self.config.g_beta_1, self.config.d_beta_2),
         )
 
-    def plot_training_examples(self):
-        real_batch = next(iter(self.dataloader))
-        fig = plt.figure(figsize=(8, 8))
-        plt.axis("off")
-        plt.title("Training Images")
-        plt.imshow(
-            np.transpose(
-                vutils.make_grid(real_batch[0].to(self.device)[:64], padding=2, normalize=True).cpu(),
-                (1, 2, 0),
+    def init_lr_decay_deltas(self) -> None:
+        if self.config.lr_linear_decay_enabled:
+            self.lr_g_decay_delta = self.config.g_learning_rate / (
+                self.config.num_epochs - self.config.g_lr_decay_start_epoch
             )
-        )
-        plt.close(fig)
+            self.lr_d_decay_delta = self.config.d_learning_rate / (
+                self.config.num_epochs - self.config.d_lr_decay_start_epoch
+            )
 
     def train_and_plot(self):
-        self.plot_training_examples()
+        viz_util.plot_training_examples(self.dataloader, self.device)
+
         self.train()
-        self.plot_and_save_losses()
+
+        losses_figure_path = self.config.experiment_output_root + "losses.png"
+        viz_util.plot_and_save_losses(self.G_losses, self.D_losses, losses_figure_path)
+        probabilities_figure_path = self.config.experiment_output_root + "probs.png"
+        viz_util.plot_and_save_discriminator_results(self.D_x_vals, self.G_D_z_vals, probabilities_figure_path)
 
     def train(self):
-        self.img_list = []
-        self.G_losses = []
-        self.D_losses = []
-
         real_label = 1
         fake_label = 0
 
@@ -151,6 +164,8 @@ class DCGAN:
             for batch_num, data in enumerate(self.dataloader, 0):
                 self.train_batch(real_label, fake_label, epoch, batch_num, data)
                 self.save_fakes_snapshot_if_needed(epoch=epoch, batch_num=batch_num)
+            if self.config.lr_linear_decay_enabled:
+                self.update_learning_rate_linear_decay(epoch)
             print("Epoch %d took %.4fs." % (epoch, timer() - start_epoch))
 
         training_time = timer() - start_training
@@ -212,9 +227,33 @@ class DCGAN:
         self.optimizerG.step()
 
         self.log_batch_stats(epoch, i, D_x, D_G_z1, loss_D, loss_G, D_G_z2)
+        self.save_training_data(loss_G, loss_D, D_x, D_G_z2)
 
+    def update_learning_rate_linear_decay(self, current_epoch):
+        if current_epoch < self.config.d_lr_decay_start_epoch:
+            return
+
+        for param_group in self.optimizerD.param_groups:
+            param_group["lr"] -= self.lr_d_decay_delta
+        for param_group in self.optimizerG.param_groups:
+            param_group["lr"] -= self.lr_g_decay_delta
+
+    ################################ Visualization and logging ################################
+    ################################ EXTRACT SOME
     def log_batch_stats(self, epoch, i, D_x, D_G_z1, loss_D, loss_G, D_G_z2):
         if i % 50 == 0:
+
+            wandb.log(
+                {
+                    "Epoch": epoch,
+                    "D Loss": loss_D,
+                    "G Loss": loss_G,
+                    "D(x)": D_x,
+                    "D(G(z)) before D": D_G_z1,
+                    "D(G(z)) after D": D_G_z2,
+                }
+            )
+
             print(
                 "[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f"
                 % (
@@ -230,8 +269,11 @@ class DCGAN:
                 )
             )
 
+    def save_training_data(self, loss_G, loss_D, D_x, D_G_z) -> None:
         self.G_losses.append(loss_G.item())
         self.D_losses.append(loss_D.item())
+        self.D_x_vals.append(D_x)
+        self.G_D_z_vals.append(D_G_z)
 
     def save_fakes_snapshot_if_needed(self, epoch, batch_num):
         if (epoch % 5 == 0) and (batch_num == len(self.dataloader) - 1):
@@ -244,17 +286,6 @@ class DCGAN:
                 fake = self.G(self.fixed_noise).detach().cpu()
                 self.save_current_fakes_snapshot(fake, epoch, True)
 
-    def plot_and_save_losses(self):
-        fig = plt.figure(figsize=(10, 5))
-        plt.title("G and D loss during trainning")
-        plt.plot(self.G_losses, label="G")
-        plt.plot(self.D_losses, label="D")
-        plt.xlabel("iterations")
-        plt.ylabel("Loss")
-        plt.legend()
-        plt.savefig(self.config.experiment_output_root + "losses.png")
-        plt.close(fig)
-
     def save_current_fakes_snapshot(self, fake_batch, epoch, isFinal):
         fig = plt.figure(figsize=(16, 16))
         plt.axis("off")
@@ -265,7 +296,8 @@ class DCGAN:
                 (1, 2, 0),
             )
         )
-        plt.savefig(self.config.intermediates_root + "epoch%d.png" % (epoch))
+        output_name = self.config.intermediates_root + "epoch%d.png" % (epoch)
+        plt.savefig(output_name)
         plt.close(fig)
         print("Figure saved.")
 

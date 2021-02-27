@@ -36,3 +36,8 @@ class Config:
     g_beta_2: float
     d_beta_1: float
     d_beta_2: float
+
+    # Learning rate linear decay parameters
+    g_lr_decay_start_epoch: int
+    d_lr_decay_start_epoch: int
+    lr_linear_decay_enabled: bool = False
