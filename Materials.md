@@ -1,5 +1,9 @@
 # Thesis Materials
 
+## Various surveys
+
+- Transformers in Vision: A Survey
+
 ## GANs
 
 ### Papers
@@ -125,14 +129,6 @@
 2021
 
 - [U2-Net: Going Deeper with Nested U-Structure for Salient Object Detection](https://arxiv.org/abs/2005.09007v2)
-
----
-
-## Semi-supervised GANs
-
-### Papers
-
-### Other
 
 ---
 

@@ -1,5 +1,11 @@
 BGSIAM
 
+# Other Surveys
+
+Generative Adversarial Networks for Image andVideo Synthesis: Algorithms and Applications
+
+StAR in Neural Rendering
+
 # Semantic synthesis and manipulation
 
 ---
@@ -36,7 +42,11 @@ Image synthesis with semantic region-adaptive normalization
 
 Edge guided gans with semantic preserving for semantic image synthesis.
 
+Dual Attention GANs for Semantic Image Synthesis
+
 Focal Frequency Loss for Generative Models
+
+Taming Transformers for High-Resolution Image Synthesis
 
 ---
 
