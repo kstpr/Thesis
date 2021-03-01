@@ -19,6 +19,7 @@ import torch.utils.data
 
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
+from torchvision.transforms.transforms import ColorJitter, RandomHorizontalFlip, RandomRotation
 import torchvision.utils as vutils
 
 import numpy as np
@@ -93,6 +94,28 @@ class DCGAN:
             num_workers=self.config.dataloader_num_workers,
         )
 
+    def init_dataset_and_loader_transformed(self):
+        dataset = dset.ImageFolder(
+            root=self.config.dataroot.dataset_root,
+            transform=transforms.Compose(
+                [
+                    transforms.Resize(self.config.image_size),
+                    # transforms.ColorJitter(brightness=0.25, contrast=0.25, saturation=0.25),
+                    transforms.CenterCrop(self.config.image_size),
+                    transforms.RandomHorizontalFlip(p=0.5),
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                ]
+            ),
+        )
+
+        self.dataloader = torch.utils.data.dataloader.DataLoader(
+            dataset=dataset,
+            batch_size=self.config.batch_size,
+            shuffle=True,
+            num_workers=self.config.dataloader_num_workers,
+        )
+
     def init_generator(self) -> Generator:
         generator = Generator(
             num_gpu=self.config.num_gpu,
@@ -144,8 +167,6 @@ class DCGAN:
             )
 
     def train_and_plot(self):
-        viz_util.plot_training_examples(self.dataloader, self.device)
-
         self.train()
 
         losses_figure_path = self.config.experiment_output_root + "losses.png"
@@ -227,7 +248,7 @@ class DCGAN:
         self.optimizerG.step()
 
         self.log_batch_stats(epoch, i, D_x, D_G_z1, loss_D, loss_G, D_G_z2)
-        self.save_training_data(loss_G, loss_D, D_x, D_G_z2)
+        self.persist_training_data(loss_G, loss_D, D_x, D_G_z2)
 
     def update_learning_rate_linear_decay(self, current_epoch):
         if current_epoch < self.config.d_lr_decay_start_epoch:
@@ -242,7 +263,6 @@ class DCGAN:
     ################################ EXTRACT SOME
     def log_batch_stats(self, epoch, i, D_x, D_G_z1, loss_D, loss_G, D_G_z2):
         if i % 50 == 0:
-
             wandb.log(
                 {
                     "Epoch": epoch,
@@ -269,37 +289,24 @@ class DCGAN:
                 )
             )
 
-    def save_training_data(self, loss_G, loss_D, D_x, D_G_z) -> None:
+    def persist_training_data(self, loss_G, loss_D, D_x, D_G_z) -> None:
         self.G_losses.append(loss_G.item())
         self.D_losses.append(loss_D.item())
         self.D_x_vals.append(D_x)
         self.G_D_z_vals.append(D_G_z)
 
     def save_fakes_snapshot_if_needed(self, epoch, batch_num):
+        output_name = self.config.intermediates_root + "epoch%d.png" % (epoch)
+
         if (epoch % 5 == 0) and (batch_num == len(self.dataloader) - 1):
             with torch.no_grad():
                 fake = self.G(self.fixed_noise).detach().cpu()
-                self.save_current_fakes_snapshot(fake, epoch, False)
+                viz_util.save_current_fakes_snapshot(fake, epoch, False, self.device, output_name)
 
         if (epoch == self.config.num_epochs - 1) and (batch_num == len(self.dataloader) - 1):
             with torch.no_grad():
                 fake = self.G(self.fixed_noise).detach().cpu()
-                self.save_current_fakes_snapshot(fake, epoch, True)
-
-    def save_current_fakes_snapshot(self, fake_batch, epoch, isFinal):
-        fig = plt.figure(figsize=(16, 16))
-        plt.axis("off")
-        plt.title("Images in " + ("final epoch" if isFinal else "epoch %d" % (epoch)))
-        plt.imshow(
-            np.transpose(
-                vutils.make_grid(fake_batch.to(self.device)[:64], padding=2, normalize=True).cpu(),
-                (1, 2, 0),
-            )
-        )
-        output_name = self.config.intermediates_root + "epoch%d.png" % (epoch)
-        plt.savefig(output_name)
-        plt.close(fig)
-        print("Figure saved.")
+                viz_util.save_current_fakes_snapshot(fake, epoch, True, self.device, output_name)
 
     def plot_results_animation(self):
         import matplotlib
@@ -313,6 +320,7 @@ class DCGAN:
 
         HTML(ani.to_jshtml())
 
+    # Generates and saves 2048 fake images for running the FID score script
     def generate_fake_results(self):
         self.fixed_noise = torch.randn(2048, self.config.latent_size, 1, 1, device=self.device)
 

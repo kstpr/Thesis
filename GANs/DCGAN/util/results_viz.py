@@ -17,6 +17,9 @@ class ExperimentData:
     fid_score: float
     time: float
 
+############################################################################
+# Methods for automatic building of plots and figures for the results data #
+############################################################################
 
 def gather_results_by_dataset(results_dir: str, dataset_keyword: str):
     dirs = [f for f in listdir(results_dir) if path.isdir(path.join(results_dir, f))]
@@ -69,7 +72,7 @@ def plot_training_time_by_batch(data: List[ExperimentData]):
     plt.close(fig)
 
 #%%
-gather_results_by_dataset("/home/ksp/Thesis/src/Thesis/GANs/DCGAN/results/", "wild")
+gather_results_by_dataset("/home/ksp/Thesis/src/Thesis/GANs/DCGAN/results/ttur/", "cat")
 
 
 # %%

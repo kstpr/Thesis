@@ -27,9 +27,7 @@ results_root = "/home/ksp/Thesis/src/Thesis/GANs/DCGAN/results/"
 
 
 def setup_directories_with_timestamp(experiment_batch_name: str = ""):
-    now = datetime.now()  # current date and time
-
-    timestamp: str = now.strftime("%m_%d_%Y__%H_%M_%S")
+    timestamp: str = datetime.now().strftime("%m_%d_%Y__%H_%M_%S")
     experiment_root = "%s%s/" % (
         results_root,
         experiment_batch_name + timestamp,
@@ -49,7 +47,7 @@ def setup_directories_with_timestamp(experiment_batch_name: str = ""):
 
 def run_dcgan(config: Config) -> float:
     """Trains the GAN, saves intermediate results and generates 2048 fake samples from the generator
-    Return elapsed time for training the net
+    Returns total training time
     """
     dcgan = DCGAN(config=config)
     start = timer()
@@ -69,24 +67,26 @@ blueprint_config: Config = Config(
     experiment_output_root="placeholder",
     intermediates_root="placeholder",
     output_root="placeholder",
-    dataloader_num_workers=12,  # yes
+    dataloader_num_workers=12,
     image_size=64,
     latent_size=100,
-    batch_size=8,  # yes
-    num_epochs=100,  # yes
-    g_learning_rate=0.0002,
-    d_learning_rate=0.0002,
+    batch_size=8,
+    num_epochs=200,
+    g_learning_rate=0.0005,
+    d_learning_rate=0.0001,
     g_beta_1=0.5,
     g_beta_2=0.999,
     d_beta_1=0.5,
     d_beta_2=0.999,
-    lr_linear_decay_enabled=True,
+    lr_linear_decay_enabled=False,
     g_lr_decay_start_epoch = 100,
     d_lr_decay_start_epoch=100
 )
 
-num_epochs_list = [50]
-batch_sizes = [16]
+#num_epochs_list = [200]
+#batch_sizes = [16]
+d_learning_rates = [0.0001, 0.0002, 0.0005, 0.001]
+g_learning_rates = [0.0001, 0.0002, 0.0005, 0.001]
 
 def setup_wandb(config: Config):
     wandb.init(settings=wandb.Settings(start_method='fork'), entity="kpresnakov", project="test")
@@ -99,12 +99,12 @@ def setup_wandb(config: Config):
     wandb_config.log_interval = 10     # how many batches to wait before logging training status
 
 def run_experiments(tag: str) -> None:
-    for num_epochs in num_epochs_list:
-        for batch_size in batch_sizes:
-            dirs = setup_directories_with_timestamp("%s_sat_bs_%d_epochs_%d_" % (tag, batch_size, num_epochs))
+    for g_learning_rate in g_learning_rates:
+        for d_learning_rate in d_learning_rates:
+            dirs = setup_directories_with_timestamp("%s_bs_%d_epochs_%d_(lr_g=%g, lr_d=%g)" % (tag, 16, 200, g_learning_rate, d_learning_rate))
             config = dataclasses.replace(blueprint_config)
-            config.num_epochs = num_epochs
-            config.batch_size = batch_size
+            config.g_learning_rate = g_learning_rate
+            config.d_learning_rate = d_learning_rate
             config.intermediates_root = dirs["intermediates"]
             config.output_root = dirs["output"]
             config.experiment_output_root = dirs["experiment_root"]

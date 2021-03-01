@@ -1,8 +1,23 @@
 import matplotlib.pyplot as plt
+from numpy.core.numeric import full
 import wandb
 import numpy as np
 import torchvision.utils as vutils
 
+
+def save_current_fakes_snapshot(fake_batch, epoch, isFinal, device, full_output_path):
+    fig = plt.figure(figsize=(16, 16))
+    plt.axis("off")
+    plt.title("Images in " + ("final epoch" if isFinal else "epoch %d" % (epoch)))
+    plt.imshow(
+        np.transpose(
+            vutils.make_grid(fake_batch.to(device)[:64], padding=2, normalize=True).cpu(),
+            (1, 2, 0),
+        )
+    )
+    plt.savefig(full_output_path)
+    plt.close(fig)
+    print("Figure saved.")
 
 def plot_and_save_losses(g_losses, d_losses, output_full_path):
     fig = plt.figure(figsize=(10, 5))
@@ -30,7 +45,7 @@ def plot_and_save_discriminator_results(d_x, d_g_z, output_full_path) -> None:
 
     wandb.log({"Real-Fake probabilities" : wandb.Image(output_full_path)})
 
-def plot_training_examples(dataloader, device):
+def plot_training_examples(dataloader, device, path):
     real_batch = next(iter(dataloader))
     fig = plt.figure(figsize=(8, 8))
     plt.axis("off")
@@ -41,4 +56,19 @@ def plot_training_examples(dataloader, device):
             (1, 2, 0),
         )
     )
+    plt.savefig(path)
+    plt.close(fig)
+
+def plot_jittery_examples(dataloader, device, path):
+    real_batch = next(iter(dataloader))
+    fig = plt.figure(figsize=(8, 8))
+    plt.axis("off")
+    plt.title("Jittery Images")
+    plt.imshow(
+        np.transpose(
+            vutils.make_grid(real_batch[0].to(device)[:64], padding=2, normalize=True).cpu(),
+            (1, 2, 0),
+        )
+    )
+    plt.savefig(path)
     plt.close(fig)

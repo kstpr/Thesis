@@ -73,6 +73,7 @@
 - [Mind2Mind : Transfer Learning for GANs](https://arxiv.org/abs/1906.11613)
 - [Differentiable Augmentationfor Data-Efficient GAN Training](https://arxiv.org/abs/2006.10738v4)
 - [<Exponential Moving Average> Large scale GAN training for high fidelity natural image synthesis.]()
+- [TAMING GANS WITH LOOKAHEAD–MINMAX]()
 
 2021
 
