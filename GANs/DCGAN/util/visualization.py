@@ -24,7 +24,7 @@ def plot_and_save_losses(g_losses, d_losses, output_full_path):
     plt.title("G and D loss during trainning")
     plt.plot(g_losses, label="G loss")
     plt.plot(d_losses, label="D loss")
-    plt.xlabel("iterations")
+    plt.xlabel("Iterations")
     plt.ylabel("Loss")
     plt.legend()
     plt.savefig(output_full_path)
@@ -32,18 +32,42 @@ def plot_and_save_losses(g_losses, d_losses, output_full_path):
 
     wandb.log({"Losses" : wandb.Image(output_full_path)})
 
-def plot_and_save_discriminator_results(d_x, d_g_z, output_full_path) -> None:
+def plot_and_save_val_loss(d_losses_val, output_full_path):
     fig = plt.figure(figsize=(10, 5))
-    plt.title("Real and fake probabilities during trainning")
+    plt.title("Validation loss of D")
+    plt.plot(d_losses_val, label="D loss val")
+    plt.xlabel("Iterations")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.savefig(output_full_path)
+    plt.close(fig)
+
+    wandb.log({"Validation loss" : wandb.Image(output_full_path)})
+
+def plot_and_save_discriminator_probabilities(d_x, d_g_z, output_full_path) -> None:
+    fig = plt.figure(figsize=(10, 5))
+    plt.title("Real and fake probabilities during training")
     plt.plot(d_x, label="Real: D(x)")
     plt.plot(d_g_z, label="Fake: D(G(z))")
-    plt.xlabel("iterations")
+    plt.xlabel("Iterations")
     plt.ylabel("Probability")
     plt.legend()
     plt.savefig(output_full_path)
     plt.close(fig)
 
     wandb.log({"Real-Fake probabilities" : wandb.Image(output_full_path)})
+
+def plot_and_save_discriminator_val_probs(d_x_val, output_full_path) -> None:
+    fig = plt.figure(figsize=(10, 5))
+    plt.title("Validation probability during training")
+    plt.plot(d_x_val, label="Validation D(x)")
+    plt.xlabel("Iterations")
+    plt.ylabel("Probability")
+    plt.legend()
+    plt.savefig(output_full_path)
+    plt.close(fig)
+
+    wandb.log({"Train/Val D(x) probabilities" : wandb.Image(output_full_path)})
 
 def plot_training_examples(dataloader, device, path):
     real_batch = next(iter(dataloader))

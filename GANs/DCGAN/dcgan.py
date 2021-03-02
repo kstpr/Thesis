@@ -22,20 +22,13 @@ import torchvision.transforms as transforms
 from torchvision.transforms.transforms import ColorJitter, RandomHorizontalFlip, RandomRotation
 import torchvision.utils as vutils
 
-import numpy as np
-
-import matplotlib.pyplot as plt
-import matplotlib.animation as animation
-
 from IPython.display import HTML
-
-import wandb
 
 from config import Config
 from discriminator import Discriminator
 from generator import Generator
 import util.visualization as viz_util
-
+import util.logging as log_util
 
 
 def weights_init_normal(m):
@@ -55,6 +48,7 @@ class DCGAN:
         self.device = torch.device("cuda:0" if (torch.cuda.is_available() and self.config.num_gpu > 0) else "cpu")
 
         self.init_dataset_and_loader()
+        self.init_validation_dataset_and_loader()
 
         self.G = self.init_generator()
         self.D = self.init_discriminator()
@@ -62,11 +56,16 @@ class DCGAN:
         self.init_loss_and_optimizer()
         self.init_lr_decay_deltas()
 
+        # Training data
         self.img_list = []
         self.G_losses = []
         self.D_losses = []
         self.D_x_vals = []
         self.G_D_z_vals = []
+
+        # Validation data
+        self.D_x_validation_vals = []
+        self.D_losses_validation = []
 
     def init_torch(self) -> None:
         manualSeed = 999
@@ -89,6 +88,26 @@ class DCGAN:
 
         self.dataloader = torch.utils.data.dataloader.DataLoader(
             dataset=dataset,
+            batch_size=self.config.batch_size,
+            shuffle=True,
+            num_workers=self.config.dataloader_num_workers,
+        )
+
+    def init_validation_dataset_and_loader(self):
+        validation_dataset = dset.ImageFolder(
+            root=self.config.dataroot.validation_dataset_root,
+            transform=transforms.Compose(
+                [
+                    transforms.Resize(self.config.image_size),
+                    transforms.CenterCrop(self.config.image_size),
+                    transforms.ToTensor(),
+                    transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+                ]
+            ),
+        )
+
+        self.validation_dataloader = torch.utils.data.dataloader.DataLoader(
+            dataset=validation_dataset,
             batch_size=self.config.batch_size,
             shuffle=True,
             num_workers=self.config.dataloader_num_workers,
@@ -168,11 +187,7 @@ class DCGAN:
 
     def train_and_plot(self):
         self.train()
-
-        losses_figure_path = self.config.experiment_output_root + "losses.png"
-        viz_util.plot_and_save_losses(self.G_losses, self.D_losses, losses_figure_path)
-        probabilities_figure_path = self.config.experiment_output_root + "probs.png"
-        viz_util.plot_and_save_discriminator_results(self.D_x_vals, self.G_D_z_vals, probabilities_figure_path)
+        self.plot_results()
 
     def train(self):
         real_label = 1
@@ -184,7 +199,10 @@ class DCGAN:
             start_epoch = timer()
             for batch_num, data in enumerate(self.dataloader, 0):
                 self.train_batch(real_label, fake_label, epoch, batch_num, data)
-                self.save_fakes_snapshot_if_needed(epoch=epoch, batch_num=batch_num)
+                self.save_fakes_snapshot_every_nth_epoch(epoch=epoch, batch_num=batch_num)
+            if self.config.use_validation:
+                for val_batch_num, val_data in enumerate(self.validation_dataloader, 0):
+                    self.validate_batch(real_label, fake_label, epoch, val_batch_num, val_data)
             if self.config.lr_linear_decay_enabled:
                 self.update_learning_rate_linear_decay(epoch)
             print("Epoch %d took %.4fs." % (epoch, timer() - start_epoch))
@@ -192,7 +210,7 @@ class DCGAN:
         training_time = timer() - start_training
         print("Training for %d took %.4fs." % (self.config.num_epochs, training_time))
 
-    def train_batch(self, real_label, fake_label, epoch, i, data):
+    def train_batch(self, real_label, fake_label, epoch, batch_num, data):
         # Update D - max log(D(x)) + log(1 - D(G(z))
         ############################################
         # Train with real batch
@@ -247,8 +265,44 @@ class DCGAN:
         # Update G
         self.optimizerG.step()
 
-        self.log_batch_stats(epoch, i, D_x, D_G_z1, loss_D, loss_G, D_G_z2)
+        log_util.log_batch_stats(
+            epoch, self.config.num_epochs, batch_num, len(self.dataloader), D_x, D_G_z1, loss_D, loss_G, D_G_z2
+        )
         self.persist_training_data(loss_G, loss_D, D_x, D_G_z2)
+
+    # Validates performance of the discriminator - total loss (val real + fake) and probability on validation setN[]
+    def validate_batch(self, real_label, fake_label, epoch, batch_num, data):
+        with torch.no_grad():
+            self.D.zero_grad()
+            real_validation = data[0].to(self.device)
+            batch_size = real_validation.size(0)
+            label = torch.full((batch_size,), real_label, dtype=torch.float32, device=self.device)
+
+            # Forward pass real batch through D
+            output = self.D(real_validation).view(-1)
+            # Loss on real batch
+            loss_D_real_validation = self.loss(output, label)
+
+            D_x_validation = output.mean().item()
+
+            noise = torch.randn(batch_size, self.config.latent_size, 1, 1, device=self.device)
+
+            # Generate fake batch using G
+            fake = self.G(noise)
+            label.fill_(fake_label)
+
+            # Forward pass fake batch through D
+            output = self.D(fake.detach()).view(-1)
+
+            # Loss on fake batch
+            lost_D_fake_validation = self.loss(output, label)
+
+            loss_D_validation = loss_D_real_validation + lost_D_fake_validation
+
+            log_util.log_validation_batch_stats(
+                epoch, self.config.num_epochs, batch_num, len(self.dataloader), D_x_validation, loss_D_validation
+            )
+            self.persist_validation_data(loss_D_validation, D_x_validation)
 
     def update_learning_rate_linear_decay(self, current_epoch):
         if current_epoch < self.config.d_lr_decay_start_epoch:
@@ -260,34 +314,19 @@ class DCGAN:
             param_group["lr"] -= self.lr_g_decay_delta
 
     ################################ Visualization and logging ################################
-    ################################ EXTRACT SOME
-    def log_batch_stats(self, epoch, i, D_x, D_G_z1, loss_D, loss_G, D_G_z2):
-        if i % 50 == 0:
-            wandb.log(
-                {
-                    "Epoch": epoch,
-                    "D Loss": loss_D,
-                    "G Loss": loss_G,
-                    "D(x)": D_x,
-                    "D(G(z)) before D": D_G_z1,
-                    "D(G(z)) after D": D_G_z2,
-                }
-            )
 
-            print(
-                "[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tD(x): %.4f\tD(G(z)): %.4f / %.4f"
-                % (
-                    epoch,
-                    self.config.num_epochs,
-                    i,
-                    len(self.dataloader),
-                    loss_D.item(),
-                    loss_G.item(),
-                    D_x,
-                    D_G_z1,
-                    D_G_z2,
-                )
-            )
+    def plot_results(self) -> None:
+        losses_figure_path = self.config.experiment_output_root + "losses.png"
+        viz_util.plot_and_save_losses(self.G_losses, self.D_losses, losses_figure_path)
+
+        val_loss_figure_path = self.config.experiment_output_root + "val_loss.png"
+        viz_util.plot_and_save_val_loss(self.D_losses_validation, val_loss_figure_path)
+
+        probabilities_figure_path = self.config.experiment_output_root + "probs.png"
+        viz_util.plot_and_save_discriminator_probabilities(self.D_x_vals, self.G_D_z_vals, probabilities_figure_path)
+
+        val_prob_figure_path = self.config.experiment_output_root + "val_prob.png"
+        viz_util.plot_and_save_discriminator_val_probs(self.D_x_validation_vals, val_prob_figure_path)
 
     def persist_training_data(self, loss_G, loss_D, D_x, D_G_z) -> None:
         self.G_losses.append(loss_G.item())
@@ -295,7 +334,11 @@ class DCGAN:
         self.D_x_vals.append(D_x)
         self.G_D_z_vals.append(D_G_z)
 
-    def save_fakes_snapshot_if_needed(self, epoch, batch_num):
+    def persist_validation_data(self, loss_D_val, D_x_val) -> None:
+        self.D_losses_validation.append(loss_D_val.item())
+        self.D_x_validation_vals.append(D_x_val)
+
+    def save_fakes_snapshot_every_nth_epoch(self, epoch, batch_num):
         output_name = self.config.intermediates_root + "epoch%d.png" % (epoch)
 
         if (epoch % 5 == 0) and (batch_num == len(self.dataloader) - 1):
@@ -307,18 +350,6 @@ class DCGAN:
             with torch.no_grad():
                 fake = self.G(self.fixed_noise).detach().cpu()
                 viz_util.save_current_fakes_snapshot(fake, epoch, True, self.device, output_name)
-
-    def plot_results_animation(self):
-        import matplotlib
-
-        matplotlib.rcParams["animation.embed_limit"] = 64
-
-        fig = plt.figure(figsize=(12, 12))
-        plt.axis("off")
-        ims = [[plt.imshow(np.transpose(i, (1, 2, 0)), animated=True)] for i in self.img_list]
-        ani = animation.ArtistAnimation(fig, ims, interval=1000, repeat_delay=1000, blit=True)
-
-        HTML(ani.to_jshtml())
 
     # Generates and saves 2048 fake images for running the FID score script
     def generate_fake_results(self):
@@ -333,3 +364,15 @@ class DCGAN:
                     normalize=True,
                     padding=0,
                 )
+
+    # def plot_results_animation(self):
+    #     import matplotlib
+
+    #     matplotlib.rcParams["animation.embed_limit"] = 64
+
+    #     fig = plt.figure(figsize=(12, 12))
+    #     plt.axis("off")
+    #     ims = [[plt.imshow(np.transpose(i, (1, 2, 0)), animated=True)] for i in self.img_list]
+    #     ani = animation.ArtistAnimation(fig, ims, interval=1000, repeat_delay=1000, blit=True)
+
+    #     HTML(ani.to_jshtml())

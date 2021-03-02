@@ -3,6 +3,7 @@ from dataclasses import dataclass
 @dataclass
 class DataRoot:
     dataset_root: str  # in a format expected by the dataloader; contain classes folders, unused by our needs
+    validation_dataset_root: str # the same format as above; used for validation 
     immediate_dir: str  # folder directly containing the actual images; needed for calculating the FID score
 
 @dataclass
@@ -26,6 +27,7 @@ class Config:
     latent_size: int  # size of the latent noise vector
 
     # Training parameters
+    use_validation: bool
     batch_size: int
     num_epochs: int
     g_learning_rate: float

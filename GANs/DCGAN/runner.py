@@ -14,13 +14,19 @@ import wandb
 general_dataroot = "/home/ksp/Thesis/data/"
 
 cats_dataroot = DataRoot(
-    dataset_root=path.join(general_dataroot, "cats_only"), immediate_dir=path.join(general_dataroot, "cats_only", "cat")
+    dataset_root=path.join(general_dataroot, "cats_only"), 
+    validation_dataset_root=path.join(general_dataroot, "cats_only_val"),
+    immediate_dir=path.join(general_dataroot, "cats_only", "cat")
 )
 dogs_dataroot = DataRoot(
-    dataset_root=path.join(general_dataroot, "dogs_only"), immediate_dir=path.join(general_dataroot, "dogs_only", "dog")
+    dataset_root=path.join(general_dataroot, "dogs_only"),
+    validation_dataset_root=path.join(general_dataroot, "dogs_only_val"),
+    immediate_dir=path.join(general_dataroot, "dogs_only", "dog")
 )
 wildlife_dataroot = DataRoot(
-    dataset_root=path.join(general_dataroot, "wildlife_only"), immediate_dir=path.join(general_dataroot, "wildlife_only", "wild")
+    dataset_root=path.join(general_dataroot, "wildlife_only"),
+    validation_dataset_root=path.join(general_dataroot, "wildlife_only_val"),
+    immediate_dir=path.join(general_dataroot, "wildlife_only", "wild")
 )
 
 results_root = "/home/ksp/Thesis/src/Thesis/GANs/DCGAN/results/"
@@ -60,33 +66,41 @@ def run_dcgan(config: Config) -> float:
 
 blueprint_config: Config = Config(
     num_gpu=1,
+    # network params
     g_feat_maps=64,
     d_feat_maps=64,
     num_channels=3,
-    dataroot=wildlife_dataroot,
+    # directories
+    dataroot=cats_dataroot,
     experiment_output_root="placeholder",
     intermediates_root="placeholder",
     output_root="placeholder",
+    # ...
     dataloader_num_workers=12,
     image_size=64,
     latent_size=100,
-    batch_size=8,
+    # training params
+    use_validation=True,
+    batch_size=16,
     num_epochs=200,
-    g_learning_rate=0.0005,
-    d_learning_rate=0.0001,
+    # learning rate
+    g_learning_rate=0.0002,
+    d_learning_rate=0.0002,
+    # Adam
     g_beta_1=0.5,
     g_beta_2=0.999,
     d_beta_1=0.5,
     d_beta_2=0.999,
+    # linear decay block
     lr_linear_decay_enabled=False,
     g_lr_decay_start_epoch = 100,
     d_lr_decay_start_epoch=100
 )
 
-#num_epochs_list = [200]
-#batch_sizes = [16]
-d_learning_rates = [0.0001, 0.0002, 0.0005, 0.001]
-g_learning_rates = [0.0001, 0.0002, 0.0005, 0.001]
+num_epochs_list = [20]
+batch_sizes = [16]
+#d_learning_rates = [0.0001, 0.0002, 0.0005, 0.001]
+#g_learning_rates = [0.0001, 0.0002, 0.0005, 0.001]
 
 def setup_wandb(config: Config):
     wandb.init(settings=wandb.Settings(start_method='fork'), entity="kpresnakov", project="test")
@@ -99,12 +113,10 @@ def setup_wandb(config: Config):
     wandb_config.log_interval = 10     # how many batches to wait before logging training status
 
 def run_experiments(tag: str) -> None:
-    for g_learning_rate in g_learning_rates:
-        for d_learning_rate in d_learning_rates:
-            dirs = setup_directories_with_timestamp("%s_bs_%d_epochs_%d_(lr_g=%g, lr_d=%g)" % (tag, 16, 200, g_learning_rate, d_learning_rate))
+    for num_epochs in num_epochs_list:
+        for batch_size in batch_sizes:
+            dirs = setup_directories_with_timestamp("%s_bs_%d_epochs_%d" % (tag, 16, 200))
             config = dataclasses.replace(blueprint_config)
-            config.g_learning_rate = g_learning_rate
-            config.d_learning_rate = d_learning_rate
             config.intermediates_root = dirs["intermediates"]
             config.output_root = dirs["output"]
             config.experiment_output_root = dirs["experiment_root"]
@@ -123,7 +135,7 @@ def run_experiments(tag: str) -> None:
             print("FID: %f" % fid)
 
 
-run_experiments("wild")
+run_experiments("cats")
 
 
 # %%
