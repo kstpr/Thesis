@@ -67,8 +67,8 @@ def run_dcgan(config: Config) -> float:
 blueprint_config: Config = Config(
     num_gpu=1,
     # network params
-    g_feat_maps=64,
-    d_feat_maps=64,
+    g_feat_maps=64 * 2,
+    d_feat_maps=32,
     num_channels=3,
     # directories
     dataroot=cats_dataroot,
@@ -77,10 +77,10 @@ blueprint_config: Config = Config(
     output_root="placeholder",
     # ...
     dataloader_num_workers=12,
-    image_size=64,
+    image_size=128,
     latent_size=100,
     # training params
-    use_validation=True,
+    use_validation=False,
     batch_size=16,
     num_epochs=200,
     # learning rate
@@ -97,8 +97,8 @@ blueprint_config: Config = Config(
     d_lr_decay_start_epoch=100
 )
 
-num_epochs_list = [20]
-batch_sizes = [16]
+batch_sizes = [-1]
+latent_sizes = [-1] # [25, 75, 125, 150, 175, 200]
 #d_learning_rates = [0.0001, 0.0002, 0.0005, 0.001]
 #g_learning_rates = [0.0001, 0.0002, 0.0005, 0.001]
 
@@ -113,10 +113,14 @@ def setup_wandb(config: Config):
     wandb_config.log_interval = 10     # how many batches to wait before logging training status
 
 def run_experiments(tag: str) -> None:
-    for num_epochs in num_epochs_list:
+    for latent_size in latent_sizes:
         for batch_size in batch_sizes:
-            dirs = setup_directories_with_timestamp("%s_bs_%d_epochs_%d" % (tag, 16, 200))
             config = dataclasses.replace(blueprint_config)
+
+            #config.latent_size = latent_size
+
+            dirs = setup_directories_with_timestamp("%s_bs_%d_epochs_%d" % (tag, 16, 200))
+
             config.intermediates_root = dirs["intermediates"]
             config.output_root = dirs["output"]
             config.experiment_output_root = dirs["experiment_root"]
@@ -125,8 +129,9 @@ def run_experiments(tag: str) -> None:
 
             data_writer = DataWriter(config=config)
             data_writer.serialize_config()
-
+            
             print(config)
+
             training_time = run_dcgan(config=config)
             fid = calculate_fid_given_paths([config.dataroot.immediate_dir, config.output_root], 50, "cuda:0", 2048)
 
@@ -135,7 +140,7 @@ def run_experiments(tag: str) -> None:
             print("FID: %f" % fid)
 
 
-run_experiments("cats")
+run_experiments("cats_128_label_smoothing")
 
 
 # %%

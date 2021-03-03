@@ -74,6 +74,7 @@
 - [Differentiable Augmentationfor Data-Efficient GAN Training](https://arxiv.org/abs/2006.10738v4)
 - [<Exponential Moving Average> Large scale GAN training for high fidelity natural image synthesis.]()
 - [TAMING GANS WITH LOOKAHEAD–MINMAX]()
+- [MSG-GAN: Multi-Scale Gradients for Generative Adversarial Networks]()
 
 2021
 

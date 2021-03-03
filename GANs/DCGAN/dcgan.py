@@ -22,6 +22,8 @@ import torchvision.transforms as transforms
 from torchvision.transforms.transforms import ColorJitter, RandomHorizontalFlip, RandomRotation
 import torchvision.utils as vutils
 
+from torchsummary import summary
+
 from IPython.display import HTML
 
 from config import Config
@@ -141,10 +143,14 @@ class DCGAN:
             latent_size=self.config.latent_size,
             feat_maps_size=self.config.g_feat_maps,
             num_channels=self.config.num_channels,
+            image_size=self.config.image_size
         ).to(self.device)
 
         generator.apply(weights_init_normal)
+
         print(generator)
+        print('\n')
+        summary(generator, input_size=(self.config.latent_size, 1, 1))
 
         return generator
 
@@ -153,10 +159,14 @@ class DCGAN:
             num_gpu=self.config.num_gpu,
             num_channels=self.config.num_channels,
             feat_maps_size=self.config.d_feat_maps,
+            image_size=self.config.image_size
         ).to(self.device)
 
         discriminator.apply(weights_init_normal)
+
         print(discriminator)
+        print('\n')
+        summary(discriminator, input_size=(self.config.num_channels, self.config.image_size, self.config.image_size))
 
         return discriminator
 
@@ -191,6 +201,7 @@ class DCGAN:
 
     def train(self):
         real_label = 1
+        real_label_smoothed = 0.9
         fake_label = 0
 
         print("Starting training loop...")
@@ -198,7 +209,7 @@ class DCGAN:
         for epoch in range(self.config.num_epochs):
             start_epoch = timer()
             for batch_num, data in enumerate(self.dataloader, 0):
-                self.train_batch(real_label, fake_label, epoch, batch_num, data)
+                self.train_batch(real_label, real_label_smoothed, fake_label, epoch, batch_num, data)
                 self.save_fakes_snapshot_every_nth_epoch(epoch=epoch, batch_num=batch_num)
             if self.config.use_validation:
                 for val_batch_num, val_data in enumerate(self.validation_dataloader, 0):
@@ -210,14 +221,14 @@ class DCGAN:
         training_time = timer() - start_training
         print("Training for %d took %.4fs." % (self.config.num_epochs, training_time))
 
-    def train_batch(self, real_label, fake_label, epoch, batch_num, data):
+    def train_batch(self, real_label, real_label_smoothed, fake_label, epoch, batch_num, data):
         # Update D - max log(D(x)) + log(1 - D(G(z))
         ############################################
         # Train with real batch
         self.D.zero_grad()
         real = data[0].to(self.device)
         batch_size = real.size(0)
-        label = torch.full((batch_size,), real_label, dtype=torch.float32, device=self.device)
+        label = torch.full((batch_size,), real_label_smoothed, dtype=torch.float32, device=self.device)
 
         # Forward pass real batch through D
         output = self.D(real).view(-1)
