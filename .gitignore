@@ -7,3 +7,4 @@ GANs/DCGAN/wandb/
 GANs/DCGAN/__pycache__/config.cpython-38.pyc
 GANs/DCGAN/__pycache__/discriminator.cpython-38.pyc
 GANs/DCGAN/__pycache__/generator.cpython-38.pyc
+wandb/
