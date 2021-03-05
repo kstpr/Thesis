@@ -1,6 +1,7 @@
 *.png
 *.pyc
 *.json
+*.pth
 GANs/DCGAN/__pycache__/
 GANs/DCGAN/__pycache__/**
 GANs/DCGAN/wandb/
