@@ -30,13 +30,13 @@ Semantic View Synthesis - https://arxiv.org/abs/2008.10598v1 - svs + free viewpo
 
 [OASIS] You Only Need Adversarial Supervision for Semantic Image Synthesis
 
-Local Class-Specific and Global Image-Level Generative Adversarial Networks for Semantic-Guided Scene Generation
+[LGGAN] Local Class-Specific and Global Image-Level Generative Adversarial Networks for Semantic-Guided Scene Generation
 
 [CC-FPSE] Learning to Predict Layout-to-image Conditional Convolutions for Semantic Image Synthesis
 
 StyleFlow : Attribute-conditioned Exploration of StyleGAN-generated Images using Conditional Continuous Normalizing Flows (ACM TOG 2021)
 
-Cross-domain Correspondence Learning for Exemplar-based Image Translation
+[CoCosNet] Cross-domain Correspondence Learning for Exemplar-based Image Translation
 
 Image synthesis with semantic region-adaptive normalization
 

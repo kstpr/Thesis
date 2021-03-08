@@ -79,6 +79,13 @@
 2021
 
 - [Towards Faster and Stabilized GAN Training for High-fidelity Few-shot Image Synthesis](https://openreview.net/pdf?id=1Fqg133qRaI)[[code](https://github.com/lucidrains/lightweight-gan)]
+- [Ultra-Data-Efficient GAN Training: Drawing A Lottery Ticket First, Then Training It Toughly] ()
+- 
+---
+
+## Transformers and GANs
+
+- [Generative Adversarial Transformers]()
 
 ---
 
@@ -94,6 +101,7 @@
 
 ### Papers Ls
 
+- [The contextual loss for image transformation with non-aligned data,”]
 - [Perceptual Losses for Real-Time Style Transferand Super-Resolution](https://arxiv.org/abs/1603.08155)
 - [Loss Functions for Image Restoration with Neural Networks](https://arxiv.org/abs/1511.08861v3)
 - [Generating Images with Perceptual Similarity Metrics based on Deep Networks](https://arxiv.org/abs/1602.02644)
@@ -105,13 +113,14 @@
 
 ## Building Blocks
 
-### Papers BB
+### Papers BBdog
 
 #### General Convnets
 
 2021
 
 - [RepVGG: Making VGG-style ConvNets Great Again](https://arxiv.org/abs/2101.03697v1)
+- [Feature Pyramid Networks for Object Detection]()
 
 #### U-Nets
 
@@ -186,13 +195,16 @@
 
 ### Papers (SS)
 
-- [Local Class-Specific and Global Image-Level Generative Adversarial Networks for Semantic-Guided Scene Generation](https://arxiv.org/abs/1912.12215v3)
-- [YOU ONLY NEED ADVERSARIAL SUPERVISION FOR SEMANTIC IMAGE SYNTHESIS](https://arxiv.org/abs/2012.04781v1)
+- :heavy_check_mark:[Local Class-Specific and Global Image-Level Generative Adversarial Networks for Semantic-Guided Scene Generation](https://arxiv.org/abs/1912.12215v3)
+- :heavy_check_mark: [YOU ONLY NEED ADVERSARIAL SUPERVISION FOR SEMANTIC IMAGE SYNTHESIS](https://arxiv.org/abs/2012.04781v1)
 - :heavy_check_mark: [Semantic Image Synthesis with Spatially-Adaptive Normalization](https://arxiv.org/abs/1903.07291v2)
 - :heavy_check_mark: [High-Resolution Image Synthesis and Semantic Manipulation with Conditional GANs](https://arxiv.org/abs/1711.11585v2)
 - :heavy_check_mark: [Image-to-Image Translation with Conditional Adversarial Networks](https://arxiv.org/abs/1611.07004)
 - :heavy_check_mark: [Unpaired Image-to-Image Translation using Cycle-Consistent Adversarial Networks](https://arxiv.org/abs/1703.10593v7)
 - Learning to predict layout-to-image conditional convolutions for semantic image synthesis.(2019)
+- :heavy_check_mark: [Improving Augmentation and Evaluation Schemes for Semantic Image Synthesis](https://arxiv.org/abs/2011.12636v3)
+- :heavy_check_mark: You Only Need Adversarial Supervision for Semantic Image Synthesis
+- :heavy_check_mark: Semantic Editing of Scenes by Adding, Manipulating or Erasing Objects
 
 ### Other (SS)
 
