@@ -17,10 +17,17 @@ class Config:
 
     # Data parameters
     dataroot: DataRoot
-    experiment_output_root: str # parent output root - save everything that's not images here
+    
+    # Output and intermediates directories
+    experiment_output_root: str # parent output root - save everything that's not images or nets here
     intermediates_root: str  # intermediate results in the form of generator samples and loss history
     output_root: str  # final results as individual fake images generated from fixed noise
+    netowrk_snapshots_root: str # saves snapshots of the generator and discriminator every n epochs
+
     dataloader_num_workers: str  # num threads to load the data
+
+    # Optimizations
+    use_label_smoothing: bool # one-sided label smoothing -> real labels for D only are smoothed
 
     # Instance parameters
     image_size: int  # implicitly w = h

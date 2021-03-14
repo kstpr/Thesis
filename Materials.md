@@ -109,7 +109,7 @@
 - [Context Encoders: Feature Learning by Inpainting](https://arxiv.org/abs/1604.07379)
 - [MS-SSIM Multiscale structural similarity for image quality assessment.]()
 - [The unreasonable effectiveness of deep features as a perceptual metric.]()
-- [FID GANs trained by a two time-scale update rule converge to a local nash equilibrium.]()
+- :heavy_check_mark: [FID GANs trained by a two time-scale update rule converge to a local nash equilibrium.]()
 
 ## Building Blocks
 
