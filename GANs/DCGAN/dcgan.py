@@ -22,6 +22,8 @@ import torchvision.transforms as transforms
 from torchvision.transforms.transforms import ColorJitter, RandomHorizontalFlip, RandomRotation
 import torchvision.utils as vutils
 
+from torch.cuda.amp import autocast, GradScaler
+
 from torchsummary import summary
 
 from IPython.display import HTML
@@ -46,6 +48,8 @@ class DCGAN:
     def __init__(self, config: Config) -> None:
         self.config: Config = config
         self.init_torch()
+
+        self.use_amp = False
 
         self.device = torch.device("cuda:0" if (torch.cuda.is_available() and self.config.num_gpu > 0) else "cpu")
 
@@ -143,13 +147,13 @@ class DCGAN:
             latent_size=self.config.latent_size,
             feat_maps_size=self.config.g_feat_maps,
             num_channels=self.config.num_channels,
-            image_size=self.config.image_size
+            image_size=self.config.image_size,
         ).to(self.device)
 
         generator.apply(weights_init_normal)
 
         print(generator)
-        print('\n')
+        print("\n")
         summary(generator, input_size=(self.config.latent_size, 1, 1))
 
         return generator
@@ -159,19 +163,20 @@ class DCGAN:
             num_gpu=self.config.num_gpu,
             num_channels=self.config.num_channels,
             feat_maps_size=self.config.d_feat_maps,
-            image_size=self.config.image_size
+            image_size=self.config.image_size,
+            use_amp=self.use_amp,
         ).to(self.device)
 
         discriminator.apply(weights_init_normal)
 
         print(discriminator)
-        print('\n')
+        print("\n")
         summary(discriminator, input_size=(self.config.num_channels, self.config.image_size, self.config.image_size))
 
         return discriminator
 
     def init_loss_and_optimizer(self) -> None:
-        self.loss: nn.BCELoss = nn.BCELoss()
+        self.loss_func: nn.Module = nn.BCEWithLogitsLoss() if self.use_amp else nn.BCELoss()
 
         self.fixed_noise = torch.randn(64, self.config.latent_size, 1, 1, device=self.device)
 
@@ -185,6 +190,12 @@ class DCGAN:
             lr=self.config.g_learning_rate,
             betas=(self.config.g_beta_1, self.config.d_beta_2),
         )
+
+    def init_optimizer_wgan(self) -> None:
+        self.fixed_noise = torch.randn(64, self.config.latent_size, 1, 1, device=self.device)
+
+        self.optimizerD = optim.RMSprop(self.D.parameters, lr=self.config.d_learning_rate )
+        self.optimizerG = optim.RMSprop(self.G.parameters, lr=self.config.g_learning_rate, )
 
     def init_lr_decay_deltas(self) -> None:
         if self.config.lr_linear_decay_enabled:
@@ -200,22 +211,32 @@ class DCGAN:
         self.plot_results()
 
     def train(self):
-        real_label = 1
-        real_label_smoothed = 0.9
-        fake_label = 0
+        real_label = 1.0
+        real_label_smoothed = 0.9 if self.config.use_label_smoothing else 1.0
+        fake_label = 0.0
+
+        if self.use_amp:
+            self.scaler = GradScaler()
 
         print("Starting training loop...")
         start_training = timer()
         for epoch in range(self.config.num_epochs):
             start_epoch = timer()
+
             for batch_num, data in enumerate(self.dataloader, 0):
-                self.train_batch(real_label, real_label_smoothed, fake_label, epoch, batch_num, data)
+                if self.use_amp:
+                    self.train_batch_amp(real_label, real_label_smoothed, fake_label, epoch, batch_num, data)
+                else:
+                    self.train_batch(real_label, real_label_smoothed, fake_label, epoch, batch_num, data)
                 self.save_fakes_snapshot_every_nth_epoch(epoch=epoch, batch_num=batch_num)
+
             if self.config.use_validation:
                 for val_batch_num, val_data in enumerate(self.validation_dataloader, 0):
                     self.validate_batch(real_label, fake_label, epoch, val_batch_num, val_data)
+
             if self.config.lr_linear_decay_enabled:
                 self.update_learning_rate_linear_decay(epoch)
+            self.save_networks_every_nth_epoch(epoch=epoch)
             print("Epoch %d took %.4fs." % (epoch, timer() - start_epoch))
 
         training_time = timer() - start_training
@@ -233,7 +254,7 @@ class DCGAN:
         # Forward pass real batch through D
         output = self.D(real).view(-1)
         # Loss on real batch
-        loss_D_real = self.loss(output, label)
+        loss_D_real = self.loss_func(output, label)
 
         # Calculate gradients for D
         loss_D_real.backward()
@@ -250,7 +271,7 @@ class DCGAN:
         output = self.D(fake.detach()).view(-1)
 
         # Loss on fake batch
-        lost_D_fake = self.loss(output, label)
+        lost_D_fake = self.loss_func(output, label)
 
         # Calculate gradients for D
         lost_D_fake.backward()
@@ -268,7 +289,7 @@ class DCGAN:
         label.fill_(real_label)
         output = self.D(fake).view(-1)
 
-        loss_G = self.loss(output, label)
+        loss_G = self.loss_func(output, label)
         loss_G.backward()
 
         D_G_z2 = output.mean().item()
@@ -281,6 +302,75 @@ class DCGAN:
         )
         self.persist_training_data(loss_G, loss_D, D_x, D_G_z2)
 
+    def train_wgan():
+        pass
+
+    def train_batch_amp(self, real_label, real_label_smoothed, fake_label, epoch, batch_num, data):
+        # Update D - max log(D(x)) + log(1 - D(G(z))
+        ############################################
+        # Train with real batch
+        self.D.zero_grad()
+        real = data[0].to(self.device)
+        batch_size = real.size(0)
+        label = torch.full((batch_size,), real_label_smoothed, dtype=torch.float32, device=self.device)
+
+        with autocast():
+            # Forward pass real batch through D
+            output = self.D(real).view(-1)
+            # Loss on real batch
+            loss_D_real = self.loss_func(output, label)
+
+        # Calculate gradients for D
+        self.scaler.scale(loss_D_real).backward()
+        D_x = output.mean().item()
+
+        # Train with fake batch
+        noise = torch.randn(batch_size, self.config.latent_size, 1, 1, device=self.device)
+
+        label.fill_(fake_label)
+
+        with autocast():
+            # Generate fake batch using G
+            fake = self.G(noise)
+            # Forward pass fake batch through D
+            output = self.D(fake.detach()).view(-1)
+            # Loss on fake batch
+            lost_D_fake = self.loss_func(output, label)
+
+        # Calculate gradients for D
+        self.scaler.scale(lost_D_fake).backward()
+
+        D_G_z1 = output.mean().item()
+
+        loss_D = loss_D_real + lost_D_fake  # how
+
+        self.scaler.step(self.optimizerD)
+
+        # Update G - max log(D(G(z)))
+        #############################
+        self.G.zero_grad()
+
+        label.fill_(real_label)
+
+        with autocast():
+            output = self.D(fake).view(-1)
+            loss_G = self.loss_func(output, label)
+
+        self.scaler.scale(loss_G).backward()
+
+        D_G_z2 = output.mean().item()
+
+        # Update G
+        self.scaler.step(self.optimizerG)
+
+        self.scaler.update()
+
+        log_util.log_batch_stats(
+            epoch, self.config.num_epochs, batch_num, len(self.dataloader), D_x, D_G_z1, loss_D, loss_G, D_G_z2
+        )
+        self.persist_training_data(loss_G, loss_D, D_x, D_G_z2)
+
+    # TODO - not amp
     # Validates performance of the discriminator - total loss (val real + fake) and probability on validation setN[]
     def validate_batch(self, real_label, fake_label, epoch, batch_num, data):
         with torch.no_grad():
@@ -292,7 +382,7 @@ class DCGAN:
             # Forward pass real batch through D
             output = self.D(real_validation).view(-1)
             # Loss on real batch
-            loss_D_real_validation = self.loss(output, label)
+            loss_D_real_validation = self.loss_func(output, label)
 
             D_x_validation = output.mean().item()
 
@@ -306,7 +396,7 @@ class DCGAN:
             output = self.D(fake.detach()).view(-1)
 
             # Loss on fake batch
-            lost_D_fake_validation = self.loss(output, label)
+            lost_D_fake_validation = self.loss_func(output, label)
 
             loss_D_validation = loss_D_real_validation + lost_D_fake_validation
 
@@ -362,19 +452,32 @@ class DCGAN:
                 fake = self.G(self.fixed_noise).detach().cpu()
                 viz_util.save_current_fakes_snapshot(fake, epoch, True, self.device, output_name)
 
+    def save_networks_every_nth_epoch(self, epoch):
+        n = 50
+        if epoch != 0 and epoch % n == 0:
+            torch.save(self.G.state_dict(), self.config.netowrk_snapshots_root + "netG_epoch_%d.pth" % epoch)
+            torch.save(self.D.state_dict(), self.config.netowrk_snapshots_root + "netD_epoch_%d.pth" % epoch)
+
     # Generates and saves 2048 fake images for running the FID score script
     def generate_fake_results(self):
-        self.fixed_noise = torch.randn(2048, self.config.latent_size, 1, 1, device=self.device)
+        noise_batch_size = self.config.batch_size
+        num_noise_batches = 2048 // noise_batch_size
+
+        print("Generating random fakes: %d batches with size %d" % (num_noise_batches, noise_batch_size))
+        noise_batches = torch.randn(
+            num_noise_batches, noise_batch_size, self.config.latent_size, 1, 1, device=self.device
+        )
 
         with torch.no_grad():
-            generated_set = self.G(self.fixed_noise).detach().cpu()
-            for i, generated_img in enumerate(generated_set):
-                vutils.save_image(
-                    generated_img,
-                    self.config.output_root + "fake_%d.png" % (i),
-                    normalize=True,
-                    padding=0,
-                )
+            for i, noise_batch in enumerate(noise_batches):
+                generated_set = self.G(noise_batch).detach().cpu()
+                for j, generated_img in enumerate(generated_set):
+                    vutils.save_image(
+                        generated_img,
+                        self.config.output_root + "fake_%d.png" % (i * noise_batch_size + j),
+                        normalize=True,
+                        padding=0,
+                    )
 
     # def plot_results_animation(self):
     #     import matplotlib
