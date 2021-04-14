@@ -9,3 +9,12 @@ GANs/DCGAN/__pycache__/config.cpython-38.pyc
 GANs/DCGAN/__pycache__/discriminator.cpython-38.pyc
 GANs/DCGAN/__pycache__/generator.cpython-38.pyc
 wandb/
+GANs/WassersteinGAN-master/generate.py
+GANs/WassersteinGAN-master/LICENSE.md
+GANs/WassersteinGAN-master/main.py
+GANs/WassersteinGAN-master/README.md
+GANs/WassersteinGAN-master/requirements.txt
+GANs/WassersteinGAN-master/models/__init__.py
+GANs/WassersteinGAN-master/models/dcgan.py
+GANs/WassersteinGAN-master/models/mlp.py
+GANs/WassersteinGAN-master.zip

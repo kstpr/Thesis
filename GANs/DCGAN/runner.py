@@ -4,8 +4,12 @@ from datetime import datetime
 from os import makedirs, path
 from timeit import default_timer as timer
 
+import torch
+
 from config import Config, DataRoot
 from dcgan import DCGAN
+from dcgan_test import DCGAN_tryout
+from dcgan_wgan import DCGAN_WGAN
 from datawriter import DataWriter
 
 from pytorch_fid.fid_score import calculate_fid_given_paths
@@ -59,7 +63,7 @@ def run_dcgan(config: Config) -> float:
     """Trains the GAN, saves intermediate results and generates 2048 fake samples from the generator
     Returns total training time
     """
-    dcgan = DCGAN(config=config)
+    dcgan = DCGAN_WGAN(config=config)
     start = timer()
     dcgan.train_and_plot()
     elapsed_time: float = timer() - start
@@ -71,24 +75,24 @@ def run_dcgan(config: Config) -> float:
 blueprint_config: Config = Config(
     num_gpu=1,
     # network params
-    g_feat_maps=64 * 2,
-    d_feat_maps=32,
+    g_feat_maps=64,# * 2,
+    d_feat_maps=64,
     num_channels=3,
     # directories
-    dataroot=wildlife_dataroot,
+    dataroot=cats_dataroot,
     experiment_output_root="placeholder",
     intermediates_root="placeholder",
     output_root="placeholder",
     netowrk_snapshots_root="placeholder",
     # ...
     dataloader_num_workers=12,
-    use_label_smoothing=True,
-    image_size=256,
+    use_label_smoothing=False,
+    image_size=64,
     latent_size=100,
     # training params
     use_validation=False,
-    batch_size=8,
-    num_epochs=200,
+    batch_size=64,
+    num_epochs=1000,
     # learning rate
     g_learning_rate=0.0002,
     d_learning_rate=0.0002,
@@ -149,7 +153,11 @@ def run_experiments(tag: str) -> None:
             print("FID: %f" % fid)
 
 
-run_experiments("wild_256_label_smoothing_")
+if __name__ == "__main__":
+    import torch.backends.cudnn as cudnn
+    cudnn.benchmark = True
+
+    run_experiments("cats_wgan_")
 
 
 # %%

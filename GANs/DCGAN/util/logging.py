@@ -45,3 +45,29 @@ def log_batch_stats(epoch, num_epochs, batch_num, num_batches, D_x, D_G_z1, loss
                 D_G_z2,
             )
         )
+
+def log_wgan_batch_stats(epoch, num_epochs, batch_num, num_batches, C_x, C_G_z, loss_C, loss_G):
+    if batch_num % 10 == 0 or (batch_num == num_batches):
+        wandb.log(
+            {
+                "Epoch": epoch,
+                "C Loss": loss_C,
+                "G Loss": loss_G,
+                "C(x)": C_x,
+                "C(G(z))": C_G_z ,
+            }
+        )
+
+        print(
+            "[%d/%d][%d/%d]\tLoss_D: %.4f\tLoss_G: %.4f\tC(x): %.4f\tC(G(z)): %.4f"
+            % (
+                epoch,
+                num_epochs,
+                batch_num,
+                num_batches,
+                loss_C.item(),
+                loss_G.item(),
+                C_x,
+                C_G_z,
+            )
+        )
