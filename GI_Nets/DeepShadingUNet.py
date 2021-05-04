@@ -14,6 +14,7 @@ class UNet(nn.Module):
     def __init__(self, num_input_channels: int):
         super(UNet, self).__init__()
         self.non_linearity = nn.LeakyReLU(negative_slope=0.01)
+        self.relu = nn.ReLU()
         self.pooling = nn.AvgPool2d(kernel_size=2, stride=2)
 
         # In the Caffe description the authors use Deconvolution layers with weights initialized by a bilinear
@@ -36,7 +37,7 @@ class UNet(nn.Module):
         self.up_3 = nn.Conv2d(in_channels=(256 + 128), out_channels=128, kernel_size=3, padding=1, stride=1, groups=8)
         self.up_2 = nn.Conv2d(in_channels=(128 + 64), out_channels=64, kernel_size=3, padding=1, stride=1, groups=4)
         self.up_1 = nn.Conv2d(in_channels=(64 + 32), out_channels=32, kernel_size=3, padding=1, stride=1, groups=2)
-        self.up_0 = nn.Conv2d(in_channels=(32 + 16), out_channels=1, kernel_size=3, padding=1, stride=1)
+        self.up_0 = nn.Conv2d(in_channels=(32 + 16), out_channels=3, kernel_size=3, padding=1, stride=1)
 
         up_layers = [self.up_3, self.up_2, self.up_1, self.up_0]
         down_layers = [self.down_0, self.down_1, self.down_2, self.down_3, self.bottleneck]

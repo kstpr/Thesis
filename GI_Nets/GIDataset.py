@@ -22,6 +22,16 @@ class BufferType(Enum):
     GT_RTGI = 7
 
 
+ALL_INPUT_BUFFERS_CANONICAL = [
+    BufferType.ALBEDO,
+    BufferType.DI,
+    BufferType.WS_NORMALS,
+    BufferType.CS_NORMALS,
+    BufferType.CS_POSITIONS,
+    BufferType.DEPTH,
+]
+
+
 BUFFER_TYPE_TO_NAME = {
     BufferType.ALBEDO: "albedo",
     BufferType.DI: "di",
@@ -175,14 +185,15 @@ class GIDataset(Dataset):
             image_name = self.gt_filenames_cache[scene_path][image_index]
 
             tensors_list = []
-            for input_buffer in self.input_buffers:
+            input_and_gt_buffers = self.input_buffers + [BufferType.GT_RTGI]
+            for buffer in input_and_gt_buffers:
                 file = pyexr.open(
-                    join(scene_path, BUFFER_TYPE_TO_NAME[input_buffer], self.dynamic_range, self.resolution, image_name)
+                    join(scene_path, BUFFER_TYPE_TO_NAME[buffer], self.dynamic_range, self.resolution, image_name)
                 )
                 # Cut out the unused alpha channel. In the case of depth images take just one channel.
                 # All the non-alpha channels are equal for depth images.
                 image_array = file.get()
-                image_array = image_array[:, :, :1] if input_buffer == BufferType.DEPTH else image_array[:, :, :3]
+                image_array = image_array[:, :, :1] if buffer == BufferType.DEPTH else image_array[:, :, :3]
 
                 tensors_list.append(torch.from_numpy(image_array))
 
