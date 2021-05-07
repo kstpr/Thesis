@@ -121,11 +121,12 @@ class GIDataset(Dataset):
                 join(scene_path, BUFFER_TYPE_TO_NAME[input_buffer], self.dynamic_range, self.resolution, image_name)
             )
             s_i_1 = time.time_ns()
-            # Cut out the unused alpha channel. In the case of depth images take just one channel.
-            # All the non-alpha channels are equal there.
+
             image_array = file.get()
             s_i_2 = time.time_ns()
 
+            # Cut out the unused alpha channel. In the case of depth images take just one channel.
+            # All the non-alpha channels are equal there.
             image_array = image_array[:, :, :1] if input_buffer == BufferType.DEPTH else image_array[:, :, :3]
             # print(
             #     "Loading buffer {} total: {} ms, file load: {} ms, file.get(): {} ms".format(
@@ -183,27 +184,43 @@ class GIDataset(Dataset):
             (scene_index, image_index) = self.get_dataset_and_image_index(i)
             scene_path = self.scene_dirs[scene_index]
             image_name = self.gt_filenames_cache[scene_path][image_index]
+            self.transform_and_save_buffers_as_tensor(scene_path, image_name, target_dir)
 
-            tensors_list = []
-            input_and_gt_buffers = self.input_buffers + [BufferType.GT_RTGI]
-            for buffer in input_and_gt_buffers:
-                file = pyexr.open(
-                    join(scene_path, BUFFER_TYPE_TO_NAME[buffer], self.dynamic_range, self.resolution, image_name)
-                )
-                # Cut out the unused alpha channel. In the case of depth images take just one channel.
-                # All the non-alpha channels are equal for depth images.
-                image_array = file.get()
-                image_array = image_array[:, :, :1] if buffer == BufferType.DEPTH else image_array[:, :, :3]
+    def transform_and_save_single_scene_buffers_as_tensors(self, scene_path, target_dir, add_to_descr: False):
+        """Use the add_to_descr flag to update the description file when adding a new scene to the dataset.
+        Leave it as False when an existing scene is just changed/reexported.
+        """
+        gi_path = join(scene_path, BUFFER_TYPE_TO_NAME[BufferType.GT_RTGI], self.dynamic_range, self.resolution)
+        image_names = self.all_filepaths_for_files_in_path(gi_path)
 
-                tensors_list.append(torch.from_numpy(image_array))
+        for image_name in image_names:
+            self.transform_and_save_buffers_as_tensor(scene_path, image_name, target_dir)
 
-            # [512w, 512h, num_channels] -> [num_channels, 512w, 512h]
-            concatenated: Tensor = torch.cat(tensors_list, 2).permute(2, 0, 1)
-            no_ext_name = splitext(image_name)[0]
-            output_name = "{}.pt".format(no_ext_name)
-            output_path = join(target_dir, output_name)
-            torch.save(concatenated, output_path)
-            print("Transformed and saved {}".format(output_path))
+        if add_to_descr:
+            # TODO Not implemented
+            pass
+
+    def transform_and_save_buffers_as_tensor(self, scene_path, image_name, target_dir):
+        tensors_list = []
+        input_and_gt_buffers = self.input_buffers + [BufferType.GT_RTGI]
+
+        for buffer in input_and_gt_buffers:
+            file = pyexr.open(
+                join(scene_path, BUFFER_TYPE_TO_NAME[buffer], self.dynamic_range, self.resolution, image_name)
+            )
+            # Cut out the unused alpha channel. In the case of depth images take just one channel.
+            # All the non-alpha channels are equal for depth images.
+            image_array = file.get()
+            image_array = image_array[:, :, :1] if buffer == BufferType.DEPTH else image_array[:, :, :3]
+            tensors_list.append(torch.from_numpy(image_array))
+
+        # [512w, 512h, num_channels] -> [num_channels, 512w, 512h]
+        concatenated: Tensor = torch.cat(tensors_list, 2).permute(2, 0, 1)
+        no_ext_name = splitext(image_name)[0]
+        output_name = "{}.pt".format(no_ext_name)
+        output_path = join(target_dir, output_name)
+        torch.save(concatenated, output_path)
+        print("Transformed and saved {}".format(output_path))
 
     def get_filenames_cache(self, scene_dirs: List[str]) -> Dict[str, int]:
         """We cache all the gt file names so we don't have to iterate the dataset folders each time"""

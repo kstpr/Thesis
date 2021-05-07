@@ -14,7 +14,7 @@ class UNet(nn.Module):
     def __init__(self, num_input_channels: int):
         super(UNet, self).__init__()
         self.non_linearity = nn.LeakyReLU(negative_slope=0.01)
-        self.relu = nn.ReLU()
+        self.tanh = nn.Tanh()
         self.pooling = nn.AvgPool2d(kernel_size=2, stride=2)
 
         # In the Caffe description the authors use Deconvolution layers with weights initialized by a bilinear
@@ -63,7 +63,7 @@ class UNet(nn.Module):
         t = self.up_block(t, t_3, self.up_3)
         t = self.up_block(t, t_2, self.up_2)
         t = self.up_block(t, t_1, self.up_1)
-        t = self.up_block(t, t_0, self.up_0)
+        t = self.up_block_tanh(t, t_0, self.up_0) # In order for the network to return bounded values
 
         return t
 
@@ -77,4 +77,9 @@ class UNet(nn.Module):
     def up_block(self, input: tensor, skip: tensor, up_layer: nn.Module) -> tensor:
         t = cat((self.upsample(input), skip), 1)
         t = self.non_linearity(up_layer(t))
+        return t
+    
+    def up_block_tanh(self, input: tensor, skip: tensor, up_layer: nn.Module) -> tensor:
+        t = cat((self.upsample(input), skip), 1)
+        t = self.tanh(up_layer(t))
         return t

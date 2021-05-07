@@ -1,9 +1,21 @@
 from dataclasses import dataclass
 
+
+@dataclass
+class Directories:
+    experiment_results_root: str = "" # root dir for all outputs
+    result_snapshots_dir: str = "" # snapshots of input + output images during training
+    network_snapshots_dir: str = "" # saved network snapshots
+    test_output_samples_dir: str = "" # samples of the network applied on the test dataset
+
 @dataclass
 class Config:
+    # 1 if you have a capable GPU else 0 for CPU. Multiple GPUs not tested.
     num_gpu: int
-    num_workers: str  # num threads to load the data
+    # Num workers to load the data. Benchmark to find best values.
+    num_workers_train: int 
+    num_workers_validate: int
+    num_workers_test: int
 
     # Training parameters
     batch_size: int
@@ -12,12 +24,11 @@ class Config:
     use_validation: bool
 
     # Directories
-    results_root: str
-    #result_snapshots_dir: str
-    #network_snapshots_dir: str
+    dirs: Directories
 
     # Misc
-    num_network_snapshots: int
+    num_network_snapshots: int = 5
+    image_snapshots_interval: int = 5 # in epochs
 
     # # Adam hyperparams
     # g_beta_1: float

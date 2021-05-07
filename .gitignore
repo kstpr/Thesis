@@ -2,6 +2,8 @@
 *.pyc
 *.json
 *.pth
+*.tar
+.vscode/
 GANs/DCGAN/__pycache__/
 GANs/DCGAN/__pycache__/**
 GANs/DCGAN/wandb/
