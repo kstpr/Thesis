@@ -1,12 +1,15 @@
 import dataclasses
+import logging
 import sys
 import random
+from os.path import join
 from timeit import default_timer as timer
-from typing import Optional
+from typing import List, Optional
 
 import torch
 from torch import nn, optim
 from torch.nn.modules.loss import L1Loss, MSELoss
+from torch.tensor import Tensor
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset
 import torchvision.utils as vutils
@@ -18,6 +21,8 @@ from dacite import from_dict
 from config import Config
 from utils import scale_0_1_
 from datawriter import serialize_and_save_config
+import visualization as viz
+from logger import log_batch_stats, log_validation_stats
 
 
 class Trainer:
@@ -26,6 +31,7 @@ class Trainer:
         config: Config,
         train_dataset: Dataset,
         net: nn.Module,
+        num_channels: int,
         device: torch.device,
         validation_dataset: Optional[Dataset] = None,
     ) -> None:
@@ -51,11 +57,12 @@ class Trainer:
 
         # TODO get num channels from dataset
         self.net: nn.Module = net
-        summary(self.net, input_size=(13, 512, 512))
+        summary(self.net, input_size=(num_channels, 512, 512))
 
-        self.optimizer = optim.Adam(self.net.parameters())
+        self.optimizer = optim.Adadelta(self.net.parameters())
 
         self.samples_indices = torch.randint(0, len(train_dataset), (10,))
+        self.zero_tensor = torch.tensor(0.0)
 
     ### =================================== PUBLIC API ===================================
 
@@ -77,7 +84,10 @@ class Trainer:
         self.train(start_epoch=self.resume_epoch + 1)
 
     ### Use to find optimal number of workers for the used dataset and CPU
-    def benchmark_num_workers(self, dataset):
+    def benchmark_num_workers(self, dataset) -> int:
+        best_time: float = 10000.0
+        best_num_workers = 0
+
         for num_workers in range(2, 13):
             print("Init DataLoader")
             dataloader = DataLoader(
@@ -87,40 +97,48 @@ class Trainer:
 
             print("Initializing iter")
             begin = timer()
-            data_iter = iter(dataloader)
-            print("Iter initialization took {} s".format(timer() - begin))
-            print("Begin loop")
-            batch_num = 0
-            begin = timer()
-            num_batches = min(len(dataloader), 1000 // self.config.batch_size)
-            while batch_num < num_batches:
+            for (i, data) in enumerate(dataloader):
                 sys.stdout.write("#")
                 sys.stdout.flush()
-                data = data_iter.next()
-                batch_num += 1
             epoch_time = timer() - begin
+
+            num_batches = len(dataloader)
+
+            if epoch_time < best_time:
+                best_time = epoch_time
+                best_num_workers = num_workers
             print(
                 "\nAverage time for a single batch with {} workers: {} s. Time for {} batches: {}".format(
-                    num_workers, epoch_time / batch_num, num_batches, epoch_time
+                    num_workers, epoch_time / num_batches, num_batches, epoch_time
                 )
             )
 
+        return best_num_workers
+
     def train(self, start_epoch=1):
-        ssim_loss_fn = SSIMLoss(kernel_size=9)
-        mse_loss_fn = MSELoss()
+        if start_epoch == 1:  # otherwise training is resumed and this is not needed
+            serialize_and_save_config(self.config)
+
+        ssim_loss_fn = SSIMLoss()
+        l2_loss_fn = MSELoss()
         l1_loss_fn = L1Loss()
+
+        train_losses: List[float] = []
+        val_losses: List[float] = []
 
         for epoch_num in range(start_epoch, self.config.num_epochs + 1):
             begin_epoch = timer()
             self.print_begin_epoch(epoch_num)
 
             # Train
-            self.train_epoch(l1_loss_fn, ssim_loss_fn)
+            losses = self.train_epoch(epoch_num, l1_loss_fn, l2_loss_fn, ssim_loss_fn)
+            train_losses.extend(losses)
 
             # Validate
             if self.config.use_validation:
                 with torch.no_grad():
-                    self.validate_epoch(l1_loss_fn, ssim_loss_fn)
+                    val_loss = self.validate_epoch(epoch_num, l1_loss_fn, l2_loss_fn, ssim_loss_fn)
+                    val_losses.append(val_loss)
 
             self.print_end_epoch(epoch_num, begin_epoch)
 
@@ -128,8 +146,15 @@ class Trainer:
                 self.save_snapshots(epoch_num)
 
             self.save_networks_every_nth_epoch(epoch=epoch_num)
-        # save results
-        serialize_and_save_config(self.config)
+
+        losses_figure_path = join(self.config.dirs.experiment_results_root, "losses.png")
+        viz.plot_and_save_losses(
+            train_losses,
+            val_losses,
+            self.config.num_epochs,
+            training_batches_per_epoch=len(self.train_dataloader),
+            output_full_path=losses_figure_path,
+        )
 
     ### =================================== PRIVATE ===================================
 
@@ -150,7 +175,8 @@ class Trainer:
                 num_workers=self.config.num_workers_train,
             )
 
-    def train_epoch(self, l1_loss_fn, ssim_loss_fn):
+    def train_epoch(self, epoch, l1_loss_fn, l2_loss_fn, ssim_loss_fn) -> List[float]:
+        losses: List[float] = []
         for batch_num, (input, gt) in enumerate(self.train_dataloader):
             # Skip last incomplete batch
             if batch_num == self.train_size - 1:
@@ -161,29 +187,41 @@ class Trainer:
             gt = gt.to(self.device)
             self.optimizer.zero_grad()
 
-            output: torch.Tensor = self.net(input.to(self.device))
+            output: Tensor = self.net(input.to(self.device))
 
-            # TODO a big limitation
+            # TODO a limitation
             # SDSIM requires normalized input between 0 and 1
             # scale_0_1_(output)
             gt = torch.clamp_max(gt, 1.0)
             output = (output + 1.0) / 2.0  # torch.clamp_max(output, 1.0)
 
-            l1_loss = l1_loss_fn(output, gt)
             sdsim_loss = self.structural_dissimilarity_loss(ssim_loss_fn, output, gt)
-            loss = sdsim_loss + (0.5 * l1_loss)
+            l1_loss = l1_loss_fn(output, gt) if self.config.beta != 0.0 else self.zero_tensor
+            l2_loss = l2_loss_fn(output, gt) if self.config.gamma != 0.0 else self.zero_tensor
+            loss: Tensor = (
+                (self.config.alpha * sdsim_loss) + (self.config.beta * l1_loss) + (self.config.gamma * l2_loss)
+            )
+
             loss.backward()
 
             self.optimizer.step()
 
-            if batch_num == self.train_size - 2 or batch_num % 50 == 0:
-                print(
-                    "Batch {0} took {1:.4f} s. Total loss = {2:.4f}, SDSIM loss = {3:.4f}, MSE Loss = {4:.4f}".format(
-                        batch_num, timer() - begin_batch, loss, sdsim_loss, l1_loss
-                    )
+            if batch_num == self.train_size - 2 or batch_num % self.config.batches_log_interval == 0:
+                log_batch_stats(
+                    epoch,
+                    batch_num,
+                    timer() - begin_batch,
+                    loss.detach().cpu().item(),
+                    sdsim_loss.detach().cpu().item(),
+                    l1_loss.detach().cpu().item(),
+                    l2_loss.detach().cpu().item(),
                 )
 
-    def validate_epoch(self, l1_loss_fn, ssim_loss_fn):
+            losses.append(loss.cpu().item())
+
+        return losses
+
+    def validate_epoch(self, epoch_num: int, l1_loss_fn, l2_loss_fn, ssim_loss_fn) -> float:
         self.net.eval()
         total_loss: float = 0.0
         total_l1_loss: float = 0.0
@@ -193,31 +231,30 @@ class Trainer:
 
         for batch_num, (input, gt) in enumerate(self.validation_dataloader):
             gt = gt.to(self.device)
-            output: torch.Tensor = self.net(input.to(self.device))
+            output: Tensor = self.net(input.to(self.device))
             gt = torch.clamp_max(gt, 1.0)
             output = (output + 1.0) / 2.0
 
-            l1_loss = l1_loss_fn(output, gt)
+            l1_loss = l1_loss_fn(output, gt) if self.config.beta != 0.0 else self.zero_tensor
+            l2_loss = l2_loss_fn(output, gt) if self.config.gamma != 0.0 else self.zero_tensor
             sdsim_loss = self.structural_dissimilarity_loss(ssim_loss_fn, output, gt)
-            loss = sdsim_loss + (0.5 * l1_loss)
-            total_sdsim_loss += sdsim_loss.cpu().item()
-            total_l1_loss += l1_loss.cpu().item()
-            total_loss += loss.cpu().item()
+            loss: Tensor = (
+                (self.config.alpha * sdsim_loss) + (self.config.beta * l1_loss) + (self.config.gamma * l2_loss)
+            )
+            total_sdsim_loss += sdsim_loss.detach().cpu().item()
+            total_l1_loss += l1_loss.detach().cpu().item()
+            total_loss += loss.detach().cpu().item()
 
         num_batches = len(self.validation_dataloader)
         total_loss /= num_batches
         total_l1_loss /= num_batches
         total_sdsim_loss /= num_batches
 
-        print(
-            "Validation took {0:.4f} s. Avg. losses: Total loss = {1:.4f}, SDSIM loss = {2:.4f}, L1 loss = {3:.4f}".format(
-                timer() - begin_validation, total_loss, total_sdsim_loss, total_l1_loss
-            )
-        )
+        log_validation_stats(epoch_num, timer() - begin_validation, total_loss, total_sdsim_loss, total_l1_loss)
 
-    def structural_dissimilarity_loss(
-        self, ssim_loss: nn.Module, output: torch.Tensor, ground_truth: torch.Tensor
-    ) -> torch.Tensor:
+        return total_loss
+
+    def structural_dissimilarity_loss(self, ssim_loss: nn.Module, output: Tensor, ground_truth: Tensor) -> Tensor:
         """Structural Dissimilarity as described by the auhtors"""
         if (torch.any(output < 0.0)) or (torch.any(ground_truth < 0.0)):
             print(
@@ -226,7 +263,7 @@ class Trainer:
                 )
             )
 
-        one_minus_ssim_val: torch.Tensor = ssim_loss(output, ground_truth)
+        one_minus_ssim_val: Tensor = ssim_loss(output, ground_truth)
 
         # TODO these should be constants
         return one_minus_ssim_val / torch.full(one_minus_ssim_val.size(), 2.0)
@@ -243,16 +280,14 @@ class Trainer:
                 tensors.append(albedo.clone())
                 di = sample_input[3:6, :]
                 tensors.append(di.clone())
-                normals = sample_input[6:9]
-                tensors.append(normals.clone())
                 sample_input = sample_input.to(self.device)
                 sample_output = self.net(torch.unsqueeze(sample_input, 0)).detach().cpu()
                 sample_output = sample_output.squeeze()
-                scale_0_1_(sample_output)
+                sample_output = (sample_output + 1.0) / 2.0
                 tensors.append(sample_gt)
                 tensors.append(sample_output)
 
-        grid_tensor = vutils.make_grid(tensors, nrow=5).cpu()
+        grid_tensor = vutils.make_grid(tensors, nrow=4).cpu()
         vutils.save_image(grid_tensor, image_path)
 
     def save_networks_every_nth_epoch(self, epoch):
@@ -261,6 +296,8 @@ class Trainer:
             return
 
         save_interval_in_epochs = int(self.config.num_epochs / self.config.num_network_snapshots)
+        if save_interval_in_epochs == 0:
+            return
 
         if (epoch != 0 and epoch % save_interval_in_epochs == 0) or (epoch == self.config.num_epochs):
             file_path = self.config.dirs.network_snapshots_dir + "snapshot_epoch_%d.tar" % epoch

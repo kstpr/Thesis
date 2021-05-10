@@ -9,11 +9,21 @@ from os.path import join
 import torch
 from torch.utils.data.dataset import Dataset
 import torchvision.utils as vutils
+import wandb
 
 from GIDatasetCached import GIDatasetCached
 from GIDataset import ALL_INPUT_BUFFERS_CANONICAL, BufferType, GIDataset
 from config import Config, Directories
 from trainer import Trainer
+
+
+def setup_wandb(config: Config):
+    wandb.init(settings=wandb.Settings(start_method="fork"), entity="kpresnakov", project="gi")
+
+    wandb_config = wandb.config  # Initialize config
+    wandb_config.batch_size = config.batch_size  # input batch size for training (default: 64)
+    wandb_config.epochs = config.num_epochs  # number of epochs to train (default: 10)
+    wandb_config.log_interval = config.batches_log_interval  # how many batches to wait before logging training status
 
 
 def cache_dataset_as_tensors(dir_name: str):
@@ -28,15 +38,15 @@ def cache_dataset_as_tensors(dir_name: str):
 
 def cache_single_scene_as_tensors():
     train_dataset_files = GIDataset(
-        "/media/ksp/424C0DBB4C0DAB2D/Thesis/Dataset/Train/",
+        "/media/ksp/424C0DBB4C0DAB2D/Thesis/Dataset/Validate/",
         input_buffers=ALL_INPUT_BUFFERS_CANONICAL,
         useHDR=True,
         resolution=512,
     )
 
     train_dataset_files.transform_and_save_single_scene_buffers_as_tensors(
-        scene_path="/media/ksp/424C0DBB4C0DAB2D/Thesis/Dataset/Train/big_apartment/",
-        target_dir="/home/ksp/Thesis/data/GI/PytorchTensors/Train/",
+        scene_path="/media/ksp/424C0DBB4C0DAB2D/Thesis/Dataset/Validate/living_room/",
+        target_dir="/home/ksp/Thesis/data/GI/PytorchTensors/Validate/",
         add_to_descr=False,
     )
 
@@ -63,6 +73,7 @@ def setup_directories_with_timestamp(results_root: str, experiment_name: str, ad
         experiment_results_root=experiment_root,
         result_snapshots_dir=intermediates_root,
         network_snapshots_dir=network_snapshots_root,
+        test_output_samples_dir=test_output_samlpes_root,
     )
 
 
@@ -100,7 +111,7 @@ def run():
     buffers_list = [
         BufferType.ALBEDO,
         BufferType.DI,
-        # BufferType.WS_NORMALS,
+        BufferType.WS_NORMALS,
         BufferType.CS_NORMALS,
         BufferType.CS_POSITIONS,
         BufferType.DEPTH,
@@ -121,10 +132,7 @@ def run():
     )
 
     test_dataset_cached = GIDatasetCached(
-        "/home/ksp/Thesis/data/GI/PytorchTensors/Test/",
-        input_buffers=buffers_list,
-        use_hdr=True,
-        resolution=512
+        "/home/ksp/Thesis/data/GI/PytorchTensors/Test/", input_buffers=buffers_list, use_hdr=True, resolution=512
     )
 
     dirs: Directories = setup_directories_with_timestamp(
@@ -138,30 +146,40 @@ def run():
         num_workers_train=6,
         num_workers_validate=6,
         num_workers_test=6,
-        batch_size=8,
-        num_epochs=1,
+        batch_size=16,
+        num_epochs=200,
         learning_rate=0.01,
         use_validation=True,
+        alpha=1.0,  # SDSIM weight
+        beta=0.0,  # L1 weight
+        gamma=0.0,  # L2 weight
         dirs=dirs,
-        num_network_snapshots=0,
-        image_snapshots_interval=1,
+        num_network_snapshots=5,
+        image_snapshots_interval=2,
+        descr="Plain Deep shading, last activation is tanh, 1 + output / 2 for [0,1], full buffer, SSIM kernel size 11, Adadelta optimizer.",
     )
+
+    setup_wandb(config)
 
     # sanity_check(50, train_dataset_cached, buffers_list)
 
     device = torch.device("cuda:0" if (torch.cuda.is_available() and config.num_gpu > 0) else "cpu")
-    net = UNet(13).to(device)
+    num_channels = 16
+    net = UNet(num_channels).to(device)
     trainer = Trainer(
         config=config,
         train_dataset=train_dataset_cached,
         net=net,
+        num_channels=num_channels,
         device=device,
         validation_dataset=validation_dataset_cached,
     )
-    # trainer.benchmark_num_workers(train_dataset_cached)
+    # nw = trainer.benchmark_num_workers(train_dataset_cached)
+    # print("Best num workers for bs {} : {}".format(config.batch_size, nw))
     trainer.train()
 
-    Evaluator(config, net, test_dataset_cached).eval(device)
+    Evaluator(config, net, test_dataset_cached, device).eval()
+
     # trainer.load_saved_model(
     #     "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/unet_05_06_2021__19_15_37_relu_l1_ssim/network_snapshots/snapshot_epoch_2.tar"
     # )
