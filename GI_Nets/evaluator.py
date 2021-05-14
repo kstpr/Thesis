@@ -20,8 +20,9 @@ from datawriter import serialize_and_save_results
 
 
 class Evaluator:
-    def __init__(self, config: Config, net: nn.Module, test_dataset: Dataset, device: torch.device) -> None:
+    def __init__(self, config: Config, net: nn.Module, test_dataset: Dataset, device: torch.device, save_results: bool = True) -> None:
         self.config = config
+        self.save_results = save_results
 
         self.net: nn.Module = net
         self.net.eval()
@@ -69,7 +70,7 @@ class Evaluator:
                     mae_vals.append(mae(output_img, gt_img))
                     mse_vals.append(mse(output_img, gt_img))
                     psnr_vals.append(psnr(output_img, gt_img))
-                    ssim_vals.append(ssim(output_img, gt_img).detach().item())
+                    ssim_vals.append(ssim(output_img, gt_img, kernel_size=7).detach().item())
                     lpips_vals.append(lpips(output_img, gt_img).detach().item())
 
         # evaluate inference time
@@ -81,18 +82,19 @@ class Evaluator:
                     continue
 
                 input = self.dataset.__getitem__(i)
-
+                input = input[0].unsqueeze(0).to(self.device)
+                
                 begin = timer()
 
-                output: torch.Tensor = self.net(input[0].unsqueeze(0).to(self.device))
+                output: torch.Tensor = self.net(input)
                 output = (output + 1.0) / 2.0  # torch.clamp_max(output, 1.0)
 
                 t = timer() - begin
                 times.append(t)
 
         self.process_and_save_results(avg, mae_vals, mse_vals, psnr_vals, ssim_vals, lpips_vals, times, begin_eval)
-        print("Saving snapshots...")
-        self.save_snapshots()
+        if self.save_results:
+            self.save_snapshots()
 
     def process_and_save_results(self, avg, mae_vals, mse_vals, psnr_vals, ssim_vals, lpips_vals, times, begin_eval):
         # Measures
@@ -110,25 +112,30 @@ class Evaluator:
         avg_time = avg(times)
         std_time = stdev(times)
 
-        serialize_and_save_results(
-            self.config,
-            avg_mae,
-            std_mae,
-            avg_mse,
-            std_mse,
-            avg_ssim,
-            std_ssim,
-            avg_psnr,
-            std_psnr,
-            avg_lpips,
-            std_lpips,
-            avg_time,
-            std_time,
-        )
+        if self.save_results:
+            serialize_and_save_results(
+                self.config,
+                avg_mae,
+                std_mae,
+                avg_mse,
+                std_mse,
+                avg_ssim,
+                std_ssim,
+                avg_psnr,
+                std_psnr,
+                avg_lpips,
+                std_lpips,
+                avg_time,
+                std_time,
+            )
         print(
-            """Evaluation ended for {0:.2f} s. Results:\n\tMAE = {1:.4f} +/- {2:.4f}
-            \n\tMSE = {3:.4f} +/- {4:.4f}\n\tPSNR = {5:.4f} +/- {6:.4f}\n\tSSIM = {7:.4f} +/- {8:.4f}
-            \n\tLPIPS = {9:.4f}  +/- {10:.4f}\n\tAvg. inference time = {11:.4f}  +/- {12:.4f}""".format(
+            """Evaluation ended for {0:.2f} s. Results:
+            MAE = {1:.4f} +/- {2:.4f}
+            MSE = {3:.4f} +/- {4:.4f}
+            PSNR = {5:.4f} +/- {6:.4f}
+            SSIM = {7:.4f} +/- {8:.4f}
+            LPIPS = {9:.4f}  +/- {10:.4f}
+            Avg. inference time = {11:.4f}  +/- {12:.4f}""".format(
                 timer() - begin_eval,
                 avg_mae,
                 std_mae,
@@ -146,6 +153,8 @@ class Evaluator:
         )
 
     def save_snapshots(self):
+        print("Saving snapshots...")
+
         save_dir = self.config.dirs.test_output_samples_dir
 
         tensors = []

@@ -1,4 +1,4 @@
-# %%
+
 import torch
 from torch.tensor import Tensor
 import torchvision.utils as vutils
@@ -71,6 +71,4 @@ def as_color_mapped_image(t: Tensor) -> Tensor:
 # scale_0_1(t)
 
 
-# %%
-112 / 10
-# %%
+

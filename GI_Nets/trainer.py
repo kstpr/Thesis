@@ -1,6 +1,6 @@
 import dataclasses
 import logging
-import sys
+from copy import deepcopy
 import random
 from os.path import join
 from timeit import default_timer as timer
@@ -69,9 +69,11 @@ class Trainer:
     ### Use the following two methods to resume training from a serialized network snapshot
     def load_saved_model(self, model_path: str):
         """Unsafe. Python is a nuisance and can't have a second constructor for this path. Make sure all the parameters are as expected."""
-        checkpoint = torch.load(model_path)
+        checkpoint: dict = torch.load(model_path)
         self.net.load_state_dict(checkpoint["model_state_dict"])
-        self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+
+        if "optimizer_state_dict" in checkpoint:
+            self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
         self.resume_epoch = checkpoint["epoch"]
         self.config = from_dict(data_class=Config, data=checkpoint["config"])
@@ -83,48 +85,20 @@ class Trainer:
 
         self.train(start_epoch=self.resume_epoch + 1)
 
-    ### Use to find optimal number of workers for the used dataset and CPU
-    def benchmark_num_workers(self, dataset) -> int:
-        best_time: float = 10000.0
-        best_num_workers = 0
-
-        for num_workers in range(2, 13):
-            print("Init DataLoader")
-            dataloader = DataLoader(
-                dataset=dataset, batch_size=self.config.batch_size, shuffle=True, num_workers=num_workers
-            )
-            print("Ready")
-
-            print("Initializing iter")
-            begin = timer()
-            for (i, data) in enumerate(dataloader):
-                sys.stdout.write("#")
-                sys.stdout.flush()
-            epoch_time = timer() - begin
-
-            num_batches = len(dataloader)
-
-            if epoch_time < best_time:
-                best_time = epoch_time
-                best_num_workers = num_workers
-            print(
-                "\nAverage time for a single batch with {} workers: {} s. Time for {} batches: {}".format(
-                    num_workers, epoch_time / num_batches, num_batches, epoch_time
-                )
-            )
-
-        return best_num_workers
-
     def train(self, start_epoch=1):
         if start_epoch == 1:  # otherwise training is resumed and this is not needed
             serialize_and_save_config(self.config)
 
-        ssim_loss_fn = SSIMLoss()
+        ssim_loss_fn = SSIMLoss(kernel_size=7)
         l2_loss_fn = MSELoss()
         l1_loss_fn = L1Loss()
 
         train_losses: List[float] = []
         val_losses: List[float] = []
+
+        min_val_loss = 1000.0
+        best_model_state: Optional[dict] = None
+        best_model_epoch: int = 0
 
         for epoch_num in range(start_epoch, self.config.num_epochs + 1):
             begin_epoch = timer()
@@ -132,13 +106,18 @@ class Trainer:
 
             # Train
             losses = self.train_epoch(epoch_num, l1_loss_fn, l2_loss_fn, ssim_loss_fn)
-            train_losses.extend(losses)
+            print("Train completed for {0:.4f} s".format(timer() - begin_epoch))
 
+            train_losses.extend(losses)
             # Validate
             if self.config.use_validation:
                 with torch.no_grad():
                     val_loss = self.validate_epoch(epoch_num, l1_loss_fn, l2_loss_fn, ssim_loss_fn)
                     val_losses.append(val_loss)
+
+                    if val_loss < min_val_loss:
+                        best_model_epoch = epoch_num
+                        best_model_state = deepcopy(self.net.state_dict())
 
             self.print_end_epoch(epoch_num, begin_epoch)
 
@@ -146,6 +125,9 @@ class Trainer:
                 self.save_snapshots(epoch_num)
 
             self.save_networks_every_nth_epoch(epoch=epoch_num)
+
+        if self.config.use_validation:
+            self.save_best_network(best_model_epoch, best_model_state)
 
         losses_figure_path = join(self.config.dirs.experiment_results_root, "losses.png")
         viz.plot_and_save_losses(
@@ -177,12 +159,14 @@ class Trainer:
 
     def train_epoch(self, epoch, l1_loss_fn, l2_loss_fn, ssim_loss_fn) -> List[float]:
         losses: List[float] = []
+
+        batch_load_start = timer()
         for batch_num, (input, gt) in enumerate(self.train_dataloader):
             # Skip last incomplete batch
             if batch_num == self.train_size - 1:
                 continue
 
-            begin_batch = timer()
+            batch_train_start = timer()
 
             gt = gt.to(self.device)
             self.optimizer.zero_grad()
@@ -191,11 +175,14 @@ class Trainer:
 
             # TODO a limitation
             # SDSIM requires normalized input between 0 and 1
-            # scale_0_1_(output)
             gt = torch.clamp_max(gt, 1.0)
             output = (output + 1.0) / 2.0  # torch.clamp_max(output, 1.0)
 
-            sdsim_loss = self.structural_dissimilarity_loss(ssim_loss_fn, output, gt)
+            sdsim_loss = (
+                self.structural_dissimilarity_loss(ssim_loss_fn, output, gt)
+                if self.config.alpha != 0.0
+                else self.zero_tensor
+            )
             l1_loss = l1_loss_fn(output, gt) if self.config.beta != 0.0 else self.zero_tensor
             l2_loss = l2_loss_fn(output, gt) if self.config.gamma != 0.0 else self.zero_tensor
             loss: Tensor = (
@@ -206,18 +193,25 @@ class Trainer:
 
             self.optimizer.step()
 
+            # TODO may be a bottleneck
+            loss_val = loss.detach().cpu().item()
+            losses.append(loss_val)
+
+            batch_end = timer()
+
             if batch_num == self.train_size - 2 or batch_num % self.config.batches_log_interval == 0:
                 log_batch_stats(
                     epoch,
                     batch_num,
-                    timer() - begin_batch,
-                    loss.detach().cpu().item(),
+                    batch_end - batch_load_start,
+                    batch_end - batch_train_start,
+                    loss_val,
                     sdsim_loss.detach().cpu().item(),
                     l1_loss.detach().cpu().item(),
-                    l2_loss.detach().cpu().item(),
+                    # l2_loss.detach().cpu().item(),
                 )
 
-            losses.append(loss.cpu().item())
+            batch_load_start = timer()
 
         return losses
 
@@ -235,9 +229,14 @@ class Trainer:
             gt = torch.clamp_max(gt, 1.0)
             output = (output + 1.0) / 2.0
 
+            sdsim_loss = (
+                self.structural_dissimilarity_loss(ssim_loss_fn, output, gt)
+                if self.config.alpha != 0.0
+                else self.zero_tensor
+            )
             l1_loss = l1_loss_fn(output, gt) if self.config.beta != 0.0 else self.zero_tensor
             l2_loss = l2_loss_fn(output, gt) if self.config.gamma != 0.0 else self.zero_tensor
-            sdsim_loss = self.structural_dissimilarity_loss(ssim_loss_fn, output, gt)
+
             loss: Tensor = (
                 (self.config.alpha * sdsim_loss) + (self.config.beta * l1_loss) + (self.config.gamma * l2_loss)
             )
@@ -311,6 +310,17 @@ class Trainer:
                 file_path,
             )
             print("Model snapshot saved in {}.".format(file_path))
+
+    def save_best_network(self, epoch, network_state_dict):
+        file_path = self.config.dirs.network_snapshots_dir + "best_net_epoch_%d.tar" % epoch
+        torch.save(
+            {
+                "epoch": epoch,
+                "config": dataclasses.asdict(self.config),
+                "model_state_dict": network_state_dict,
+            },
+            file_path,
+        )
 
     def print_begin_epoch(self, epoch_num):
         print()

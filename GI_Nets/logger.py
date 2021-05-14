@@ -1,18 +1,18 @@
 import wandb
 
-
 def log_batch_stats(
     epoch: int,
     batch_num: int,
     batch_time: float,
+    batch_train_time: float,
     total_loss: float,
     sdsim_loss: float,
     l1_loss: float = 0.0,
     l2_loss: float = 0.0,
 ):
     print(
-        "Batch {0} took {1:.4f} s. Total loss = {2:.4f}, SDSIM loss = {3:.4f}, L1 loss = {4:.4f}, L2 loss = {5:.4f}".format(
-            batch_num, batch_time, total_loss, sdsim_loss, l1_loss, l2_loss
+        "Batch {0} [{2:.4f}s /{1:.4f} s][whole/train]. Total loss = {3:.4f}, SDSIM loss = {4:.4f}, L1 loss = {5:.4f}, L2 loss = {6:.4f}".format(
+            batch_num, batch_time, batch_train_time, total_loss, sdsim_loss, l1_loss, l2_loss
         )
     )
     wandb.log(
