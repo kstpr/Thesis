@@ -4,7 +4,8 @@ from copy import deepcopy
 import random
 from os.path import join
 from timeit import default_timer as timer
-from typing import List, Optional
+from typing import List, Optional, Tuple
+from numpy.lib.function_base import diff
 
 import torch
 from torch import nn, optim
@@ -23,6 +24,7 @@ from utils import scale_0_1_
 from datawriter import serialize_and_save_config
 import visualization as viz
 from logger import log_batch_stats, log_validation_stats
+import netutils
 
 
 class Trainer:
@@ -33,6 +35,7 @@ class Trainer:
         net: nn.Module,
         num_channels: int,
         device: torch.device,
+        io_transform: netutils.IOTransform,
         validation_dataset: Optional[Dataset] = None,
     ) -> None:
         self.init_torch()
@@ -54,6 +57,7 @@ class Trainer:
             self.validate_size = len(self.validation_dataloader)
 
         self.device = device
+        self.io_transform = io_transform
 
         # TODO get num channels from dataset
         self.net: nn.Module = net
@@ -61,7 +65,7 @@ class Trainer:
 
         self.optimizer = optim.Adadelta(self.net.parameters())
 
-        self.samples_indices = torch.randint(0, len(train_dataset), (10,))
+        self.samples_indices = [0, 40, 124, 282, 342, 432, 519, 560, 667, 783]
         self.zero_tensor = torch.tensor(0.0)
 
     ### =================================== PUBLIC API ===================================
@@ -89,7 +93,7 @@ class Trainer:
         if start_epoch == 1:  # otherwise training is resumed and this is not needed
             serialize_and_save_config(self.config)
 
-        ssim_loss_fn = SSIMLoss(kernel_size=7)
+        ssim_loss_fn = SSIMLoss(kernel_size=7, data_range=1.0)
         l2_loss_fn = MSELoss()
         l1_loss_fn = L1Loss()
 
@@ -165,18 +169,15 @@ class Trainer:
             # Skip last incomplete batch
             if batch_num == self.train_size - 1:
                 continue
+            should_log = batch_num == self.train_size - 2 or batch_num % self.config.batches_log_interval == 0
 
             batch_train_start = timer()
 
-            gt = gt.to(self.device)
             self.optimizer.zero_grad()
 
-            output: Tensor = self.net(input.to(self.device))
-
-            # TODO a limitation
-            # SDSIM requires normalized input between 0 and 1
-            gt = torch.clamp_max(gt, 1.0)
-            output = (output + 1.0) / 2.0  # torch.clamp_max(output, 1.0)
+            gt: Tensor = self.io_transform.transform_gt(gt)
+            input: Tensor = self.io_transform.transform_input(input)
+            output: Tensor = self.io_transform.transform_output(input=input, output=self.net(input))
 
             sdsim_loss = (
                 self.structural_dissimilarity_loss(ssim_loss_fn, output, gt)
@@ -197,9 +198,8 @@ class Trainer:
             loss_val = loss.detach().cpu().item()
             losses.append(loss_val)
 
-            batch_end = timer()
-
-            if batch_num == self.train_size - 2 or batch_num % self.config.batches_log_interval == 0:
+            if should_log:
+                batch_end = timer()
                 log_batch_stats(
                     epoch,
                     batch_num,
@@ -224,10 +224,9 @@ class Trainer:
         begin_validation = timer()
 
         for batch_num, (input, gt) in enumerate(self.validation_dataloader):
-            gt = gt.to(self.device)
-            output: Tensor = self.net(input.to(self.device))
-            gt = torch.clamp_max(gt, 1.0)
-            output = (output + 1.0) / 2.0
+            gt: Tensor = self.io_transform.transform_gt(gt)
+            input: Tensor = self.io_transform.transform_input(input)
+            output: Tensor = self.io_transform.transform_output(input=input, output=self.net(input))
 
             sdsim_loss = (
                 self.structural_dissimilarity_loss(ssim_loss_fn, output, gt)
@@ -240,6 +239,7 @@ class Trainer:
             loss: Tensor = (
                 (self.config.alpha * sdsim_loss) + (self.config.beta * l1_loss) + (self.config.gamma * l2_loss)
             )
+
             total_sdsim_loss += sdsim_loss.detach().cpu().item()
             total_l1_loss += l1_loss.detach().cpu().item()
             total_loss += loss.detach().cpu().item()
@@ -275,14 +275,20 @@ class Trainer:
         with torch.no_grad():
             for index in self.samples_indices:
                 (sample_input, sample_gt) = self.train_dataset.__getitem__(index)
-                albedo = sample_input[0:3, :]
-                tensors.append(albedo.clone())
-                di = sample_input[3:6, :]
-                tensors.append(di.clone())
-                sample_input = sample_input.to(self.device)
-                sample_output = self.net(torch.unsqueeze(sample_input, 0)).detach().cpu()
-                sample_output = sample_output.squeeze()
-                sample_output = (sample_output + 1.0) / 2.0
+
+                sample_gt: Tensor = self.io_transform.transform_gt(sample_gt)
+                sample_input: Tensor = self.io_transform.transform_input(sample_input)
+                sample_output: Tensor = self.io_transform.transform_output(
+                    input=sample_input.unsqueeze(0), output=self.net(sample_input.unsqueeze(0))
+                )
+
+                diffuse_albedo = sample_input.squeeze()[0:3, :].clone()
+                tensors.append(diffuse_albedo)
+                di = sample_input.squeeze()[3:6, :].clone()
+                tensors.append(di)  # di or di mask
+
+                sample_output = sample_output.detach().squeeze()
+
                 tensors.append(sample_gt)
                 tensors.append(sample_output)
 

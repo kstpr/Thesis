@@ -7,6 +7,7 @@ import shutil
 from torch.utils.data import DataLoader
 import sys
 from timeit import default_timer as timer
+import json
 
 from torch.utils.data.dataset import Dataset
 
@@ -115,3 +116,24 @@ def benchmark_num_workers(batch_size: int, dataset: Dataset) -> int:
         )
 
     return best_num_workers
+
+def results_to_latex(net_name: str):
+    results_path = "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/losses_combinations/{}/results.json".format(net_name)
+    
+    with open(results_path, "r") as read_file:
+        results_dict = json.load(read_file)
+
+    results_latex = "\\textbf{{}}          & {0}     & {1}     & {2}     & {3}    & {4}     \\\\ \hdashline".format(
+        results_dict["mae"], 
+        results_dict["mse"],
+        results_dict["ssim"],
+        results_dict["psnr"],
+        results_dict["lpips"]
+    )
+    return results_latex
+
+
+if __name__ == "__main__":
+    pass
+    # net_name = "unet_05_13_2021__02_33_19_ssim_l1_l2"
+    # print(results_to_latex(net_name))

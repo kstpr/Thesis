@@ -33,6 +33,13 @@ print(t.shape)
 # s = torch.squeeze(t[mask.nonzero(), :], 1)
 # print(s.shape)
 
+s = torch.randn(1, 16, 128, 128)
+
+upsample = torch.nn.ConvTranspose2d(16, 16, 3, stride=2, padding=1, output_padding=1)
+
+output = upsample(s)
+
+print(output.shape)
 
 def scale_for(t: torch.Tensor):
     begin = timer()
@@ -72,3 +79,5 @@ def as_color_mapped_image(t: Tensor) -> Tensor:
 
 
 
+
+# %%

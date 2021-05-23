@@ -1,4 +1,6 @@
 from dataclasses import dataclass
+from typing import List
+from GIDataset import BufferType
 
 
 @dataclass
@@ -31,6 +33,9 @@ class Config:
 
     # Directories
     dirs: Directories
+
+    # Input Buffers
+    # input_buffers: List[BufferType]
 
     # Misc
     num_network_snapshots: int = 5

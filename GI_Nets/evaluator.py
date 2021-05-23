@@ -1,3 +1,4 @@
+import os
 from numpy.core.fromnumeric import std
 from test import as_color_mapped_image
 from timeit import default_timer as timer
@@ -17,10 +18,20 @@ from matplotlib.cm import get_cmap
 from config import Config
 from measures import mae, mse, psnr
 from datawriter import serialize_and_save_results
+import netutils
 
 
 class Evaluator:
-    def __init__(self, config: Config, net: nn.Module, test_dataset: Dataset, device: torch.device, save_results: bool = True) -> None:
+    def __init__(
+        self,
+        config: Config,
+        net: nn.Module,
+        test_dataset: Dataset,
+        device: torch.device,
+        io_transform: netutils.IOTransform,
+        save_results: bool = True,
+        uses_secondary_dataset: bool = False,
+    ) -> None:
         self.config = config
         self.save_results = save_results
 
@@ -36,8 +47,10 @@ class Evaluator:
         )
 
         self.device: torch.device = device
+        self.io_transform: netutils.IOTransform = io_transform
 
         self.sample_indices = torch.randint(0, len(test_dataset), (40,))
+        self.uses_secondary_dataset = uses_secondary_dataset
 
     def eval(self) -> None:
         begin_eval = timer()
@@ -53,6 +66,7 @@ class Evaluator:
         def avg(lst: List[float]) -> float:
             return sum(lst) / len(lst)
 
+        print("Evaluating network performance...")
         with torch.no_grad():
             lpips = LPIPS()
             for batch_num, (input, gt) in enumerate(self.dataloader):
@@ -60,19 +74,18 @@ class Evaluator:
                 if batch_num == test_size - 1:
                     continue
 
-                gt = gt.to(self.device)
-                output: torch.Tensor = self.net(input.to(self.device))
-
-                gt = torch.clamp_max(gt, 1.0)
-                output = (output + 1.0) / 2.0  # torch.clamp_max(output, 1.0)
+                gt: Tensor = self.io_transform.transform_gt(gt)
+                input: Tensor = self.io_transform.transform_input(input)
+                output: Tensor = self.io_transform.transform_output(input=input, output=self.net(input))
 
                 for (output_img, gt_img) in zip(output, gt):
                     mae_vals.append(mae(output_img, gt_img))
                     mse_vals.append(mse(output_img, gt_img))
                     psnr_vals.append(psnr(output_img, gt_img))
-                    ssim_vals.append(ssim(output_img, gt_img, kernel_size=7).detach().item())
+                    ssim_vals.append(ssim(output_img, gt_img, data_range=1.0, kernel_size=7).detach().item())
                     lpips_vals.append(lpips(output_img, gt_img).detach().item())
 
+        print("Evaluating inference time...")
         # evaluate inference time
         with torch.no_grad():
             times: List[float] = []
@@ -81,19 +94,22 @@ class Evaluator:
                 if i < skip_items:
                     continue
 
-                input = self.dataset.__getitem__(i)
+                input: Tensor = self.dataset.__getitem__(i)
+
                 input = input[0].unsqueeze(0).to(self.device)
-                
+                input = self.io_transform.transform_input(input)
+
                 begin = timer()
 
                 output: torch.Tensor = self.net(input)
-                output = (output + 1.0) / 2.0  # torch.clamp_max(output, 1.0)
 
                 t = timer() - begin
                 times.append(t)
 
+        print("Processing results...")
         self.process_and_save_results(avg, mae_vals, mse_vals, psnr_vals, ssim_vals, lpips_vals, times, begin_eval)
         if self.save_results:
+            print("Saving snapshots with diff...")
             self.save_snapshots()
 
     def process_and_save_results(self, avg, mae_vals, mse_vals, psnr_vals, ssim_vals, lpips_vals, times, begin_eval):
@@ -113,8 +129,10 @@ class Evaluator:
         std_time = stdev(times)
 
         if self.save_results:
+            filename = "results_secondary_test_set.json" if self.uses_secondary_dataset else "results.json"
+            filepath = os.path.join(self.config.dirs.experiment_results_root, filename)
             serialize_and_save_results(
-                self.config,
+                filepath,
                 avg_mae,
                 std_mae,
                 avg_mse,
@@ -153,32 +171,34 @@ class Evaluator:
         )
 
     def save_snapshots(self):
-        print("Saving snapshots...")
-
         save_dir = self.config.dirs.test_output_samples_dir
+        if self.uses_secondary_dataset:
+            save_dir = save_dir[:-2] + "_secondary/"
+            os.mkdir(save_dir)
 
         tensors = []
         with torch.no_grad():
             for index in self.sample_indices:
-                image_path = save_dir + "sample_{}.png".format(index)
+                image_path = os.path.join(save_dir, "sample_{}.png".format(index))
 
                 (sample_input, sample_gt) = self.dataset.__getitem__(index)
-                sample_gt = torch.clamp_max(sample_gt, 1.0)
 
-                di = sample_input[3:6, :]
+                di = sample_input[3:6, :].to(self.device).clamp(0.0, 1.0)
+
                 tensors.append(di.clone())
 
-                sample_input = sample_input.to(self.device)
-                sample_output = self.net(torch.unsqueeze(sample_input, 0)).detach().cpu()
-                sample_output = sample_output.squeeze()
-                sample_output = (sample_output + 1.0) / 2.0
+                sample_gt: Tensor = self.io_transform.transform_gt(sample_gt)
+                sample_input: Tensor = self.io_transform.transform_input(sample_input.unsqueeze(0))
+                sample_output: Tensor = self.io_transform.transform_output(
+                    input=sample_input, output=self.net(sample_input)
+                ).squeeze()
 
                 tensors.append(sample_gt)
                 tensors.append(sample_output)
 
                 tensors.extend(self.make_diff_images(sample_output, di, sample_gt))
 
-                grid_tensor = vutils.make_grid(tensors, nrow=3).cpu()
+                grid_tensor = vutils.make_grid(tensors, nrow=3)
                 vutils.save_image(grid_tensor, image_path)
                 tensors.clear()
 
@@ -211,7 +231,9 @@ class Evaluator:
 
     def as_color_mapped_image(self, t: Tensor, colormap_name: str) -> Tensor:
         cm_hot = get_cmap(colormap_name)
+        t = t.cpu()
         t_np = t.numpy()
         t_np = cm_hot(t_np)
         t_ten = torch.from_numpy(t_np)
+        t_ten = t_ten.to(self.device)
         return t_ten.permute((2, 0, 1))[0:3, :]

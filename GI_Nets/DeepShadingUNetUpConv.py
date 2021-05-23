@@ -83,5 +83,5 @@ class UNet(nn.Module):
         t = cat((self.upsample(input), skip), 1)
         t = self.tanh(up_layer(t))
         # [-1, 1] -> [0, 1]
-        # t = (t + 1.0) / 2.0
+        t = (t + 1.0) / 2.0
         return t

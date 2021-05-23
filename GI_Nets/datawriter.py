@@ -10,7 +10,7 @@ def serialize_and_save_config(config: Config) -> None:
 
 
 def serialize_and_save_results(
-    config: Config,
+    filepath: str,
     mae: float,
     mae_std: float,
     mse: float,
@@ -22,9 +22,10 @@ def serialize_and_save_results(
     lpips: float,
     lpips_std,
     time: float,
-    time_std: float
+    time_std: float,
+
 ):
-    with open(join(config.dirs.experiment_results_root, "results.json"), "w") as text_file:
+    with open(filepath, "w") as text_file:
         results_dict = {
             "mae": "{0:.4f} +/- {1:.4f}".format(mae, mae_std),
             "mse": "{0:.4f} +/- {1:.4f}".format(mse, mse_std),
