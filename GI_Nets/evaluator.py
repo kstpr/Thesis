@@ -13,12 +13,15 @@ from torch.utils.data.dataset import Dataset
 import torchvision.utils as vutils
 
 from piq import ssim, LPIPS
+import matplotlib
+matplotlib.use('Agg')
 from matplotlib.cm import get_cmap
 
 from config import Config
 from measures import mae, mse, psnr
 from datawriter import serialize_and_save_results
 import netutils
+from utils import tosRGB_tensor
 
 
 class Evaluator:
@@ -66,7 +69,7 @@ class Evaluator:
         def avg(lst: List[float]) -> float:
             return sum(lst) / len(lst)
 
-        print("Evaluating network performance...")
+        print("\nEvaluating network performance for test set {}...".format("B" if self.uses_secondary_dataset else "A"))
         with torch.no_grad():
             lpips = LPIPS()
             for batch_num, (input, gt) in enumerate(self.dataloader):
@@ -74,9 +77,11 @@ class Evaluator:
                 if batch_num == test_size - 1:
                     continue
 
-                gt: Tensor = self.io_transform.transform_gt(gt)
                 input: Tensor = self.io_transform.transform_input(input)
-                output: Tensor = self.io_transform.transform_output(input=input, output=self.net(input))
+                gt: Tensor = self.io_transform.transform_gt(gt)
+                output: Tensor = self.io_transform.transform_output(output=self.net(input))
+
+                self.io_transform.clear()
 
                 for (output_img, gt_img) in zip(output, gt):
                     mae_vals.append(mae(output_img, gt_img))
@@ -185,16 +190,18 @@ class Evaluator:
 
                 di = sample_input[3:6, :].to(self.device).clamp(0.0, 1.0)
 
-                tensors.append(di.clone())
+                tensors.append(tosRGB_tensor(di.clone()))
 
-                sample_gt: Tensor = self.io_transform.transform_gt(sample_gt)
+                sample_gt: Tensor = self.io_transform.transform_gt_eval(sample_gt, visualize=True)
                 sample_input: Tensor = self.io_transform.transform_input(sample_input.unsqueeze(0))
-                sample_output: Tensor = self.io_transform.transform_output(
-                    input=sample_input, output=self.net(sample_input)
+                sample_output: Tensor = self.io_transform.transform_output_eval(
+                    output=self.net(sample_input), visualize=True
                 ).squeeze()
 
-                tensors.append(sample_gt)
-                tensors.append(sample_output)
+                self.io_transform.clear()
+
+                tensors.append(tosRGB_tensor(sample_gt))
+                tensors.append(tosRGB_tensor(sample_output))
 
                 tensors.extend(self.make_diff_images(sample_output, di, sample_gt))
 

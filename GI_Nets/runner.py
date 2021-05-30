@@ -1,28 +1,29 @@
 # %%
-from test import scale_0_1
-from numpy.lib import utils
-from torch import nn
-from torch.tensor import Tensor
-from evaluator import Evaluator
-from DeepShadingUNet import UNet
-from os import makedirs
-from typing import Dict, List, Tuple
-from datetime import datetime
-from os.path import join
+from ResUNet import ResUNet
+from typing import List, Tuple
 
 import torch
+from torch import nn
 from torch.utils.data.dataset import Dataset
-import torchvision.utils as vutils
 
 import wandb
 from dacite import from_dict
 
+from DeepShadingUNetBN import NormType, UNetNorm
+from evaluator import Evaluator
+from DeepShadingUNet import UNet
 from GIDatasetCached import DatasetType, GIDatasetCached
-from GIDataset import ALL_INPUT_BUFFERS_CANONICAL, BufferType, GIDataset
+from GIDataset import BufferType
 from config import Config, Directories
 from trainer import Trainer
-import utils
 import netutils
+from utils import (
+    setup_directories_with_timestamp,
+    undo_export_transforms_for_nd_arrays,
+    sanity_check,
+    sanity_check_2,
+    find_mean_and_stdev,
+)
 
 
 def setup_wandb(config: Config):
@@ -34,85 +35,6 @@ def setup_wandb(config: Config):
     wandb_config.log_interval = config.batches_log_interval  # how many batches to wait before logging training status
 
 
-def cache_dataset_as_tensors(dir_name: str):
-    dataset = GIDataset(
-        root_dir="/media/ksp/424C0DBB4C0DAB2D/Thesis/Dataset/{}/".format(dir_name),
-        input_buffers=ALL_INPUT_BUFFERS_CANONICAL,
-        useHDR=True,
-        resolution=512,
-    )
-    dataset.transform_and_save_dataset_as_tensors("/home/ksp/Thesis/data/GI/PytorchTensors/{}/".format(dir_name))
-
-
-def cache_single_scene_as_tensors():
-    dataset_files = GIDataset(
-        "/media/ksp/424C0DBB4C0DAB2D/Thesis/Dataset/Test/",
-        input_buffers=ALL_INPUT_BUFFERS_CANONICAL,
-        useHDR=True,
-        resolution=512,
-    )
-
-    dataset_files.transform_and_save_single_scene_buffers_as_tensors(
-        scene_path="/media/ksp/424C0DBB4C0DAB2D/Thesis/Dataset/Test/clothes_shop_aug/",
-        target_dir="/home/ksp/Thesis/data/GI/PytorchTensors/Test/clothes_shop_aug/",
-        add_to_descr=False,
-    )
-
-
-def setup_directories_with_timestamp(results_root: str, experiment_name: str, additional_data: str = "") -> Directories:
-    timestamp: str = datetime.now().strftime("%m_%d_%Y__%H_%M_%S")
-    experiment_root = join(
-        results_root,
-        "{}_{}_{}".format(experiment_name, timestamp, additional_data),
-    )
-
-    makedirs(experiment_root)
-
-    intermediates_root = experiment_root + "/intermediates/"
-    test_output_samlpes_root = experiment_root + "/test_output_samples/"
-    network_snapshots_root = experiment_root + "/network_snapshots/"
-
-    makedirs(intermediates_root, exist_ok=True)
-    makedirs(test_output_samlpes_root, exist_ok=True)
-    makedirs(network_snapshots_root, exist_ok=True)
-
-    # TODO output is not used yet
-    return Directories(
-        experiment_results_root=experiment_root,
-        result_snapshots_dir=intermediates_root,
-        network_snapshots_dir=network_snapshots_root,
-        test_output_samples_dir=test_output_samlpes_root,
-    )
-
-
-def sanity_check(num_sample_indices: int, train_dataset: Dataset, buffers_list: List[BufferType]):
-    print("Sanity check...")
-
-    sample_indices = torch.randint(0, len(train_dataset), (num_sample_indices,))
-
-    save_dir = "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/sanity_check/"
-    image_path = save_dir + "sanity_check.png"
-    tensors = []
-
-    with torch.no_grad():
-        for index in sample_indices:
-            (sample_input, sample_gt) = train_dataset.__getitem__(index)
-            start_index = 0
-            for buffer_type in buffers_list:
-                num_channels = 3 if buffer_type != BufferType.DEPTH else 1
-                image_tensor = sample_input[start_index : (start_index + num_channels), :]
-                if buffer_type == BufferType.DEPTH:
-                    # Depth is 1 channel but we need 3 channels to show as an image
-                    image_tensor = torch.cat([image_tensor, image_tensor, image_tensor], 0)
-                tensors.append(image_tensor.clone())
-                start_index += num_channels
-            tensors.append(sample_gt)
-
-    grid_tensor = vutils.make_grid(tensors, nrow=(len(buffers_list) + 1))
-    vutils.save_image(grid_tensor, image_path)
-
-    print("Sanity check image saved in {}".format(image_path))
-
 def load_config_from_saved_net_descr(checkpoint: dict) -> Config:
     config: Config = from_dict(data_class=Config, data=checkpoint["config"])
     return config
@@ -123,89 +45,20 @@ def load_net_from_saved_net_descr(checkpoint: dict, blueprint_net: nn.Module) ->
     return blueprint_net
 
 
-def train_new_network(
-    config: Config, train_dataset: Dataset, validation_dataset: Dataset, num_channels: int
-) -> Tuple[nn.Module, torch.device, netutils.IOTransform]:
-    device = torch.device("cuda:0" if (torch.cuda.is_available() and config.num_gpu > 0) else "cpu")
-
-    net = UNet(num_channels).to(device)
-
-    # sanity_check(50, train_dataset_cached, buffers_list)
-    io_transform: netutils.IOTransform = netutils.AdditiveDiMaskTransform(device=device)
-
-    trainer = Trainer(
-        config=config,
-        train_dataset=train_dataset,
-        net=net,
-        num_channels=num_channels,
-        device=device,
-        io_transform=io_transform,
-        validation_dataset=validation_dataset,
-    )
-
-    # nw = trainer.benchmark_num_workers(train_dataset_cached)
-    # print("Best num workers for bs {} : {}".format(config.batch_size, nw))
-
-    trainer.train()
-
-    return (net, device, io_transform)
-
-
-def load_saved_network(checkpoint_path: str) -> Tuple[nn.Module, torch.device, Config]:
+def load_saved_network(checkpoint_path: str, num_channels=16) -> Tuple[nn.Module, torch.device, Config]:
     print("Loading {}...".format(checkpoint_path))
     checkpoint: dict = torch.load(checkpoint_path)
     config = load_config_from_saved_net_descr(checkpoint)
 
     device = torch.device("cuda:0" if (torch.cuda.is_available() and config.num_gpu > 0) else "cpu")
-    num_channels = 16
+    # TODO Manually instantiates the network, should be automated
     net = UNet(num_channels).to(device)
     net = load_net_from_saved_net_descr(checkpoint, net)
 
     return (net, device, config)
 
 
-# implement def load_and_continue_train_network()...
-
-
-def sanity_check_2(dataset: Dataset, device):
-    image_path = "sanity_test.png"
-
-    tensors = []
-    sample_indices = torch.randint(0, len(dataset), (30,))
-
-    for index in sample_indices:
-        (sample_input, sample_gt) = dataset.__getitem__(index)
-
-        sample_gt: Tensor = sample_gt
-
-        sample_input: Tensor = netutils.transform_input(sample_input, device=device)
-
-        diffuse_albedo = sample_input.squeeze()[0:3, :].clamp(0.0, 1.0)
-        tensors.append(diffuse_albedo)
-
-        di = sample_input.squeeze()[3:6, :]
-        di_2 = di.clone().clamp(1.0, 2.0) - 1.0
-        di_3 = di.clone()
-        utils.scale_0_1_(di_3)
-        di_4 = di.clone().cpu().numpy()
-        di_4 = torch.from_numpy(utils.tosRGB(di_4)).to(device)
-
-        tensors.append(di)  # di clamped
-        tensors.append(di_3)  # scaled
-        tensors.append(di_2)  # over-values
-        tensors.append(di_4)  # sRGB
-        sample_gt_srgb = torch.from_numpy(utils.tosRGB(sample_gt.cpu())).to(device)
-        tensors.append(sample_gt_srgb)
-
-        # di_mask = di_mask + torch.div((torch.max(di_mask) - torch.min(di_mask)), 2.0)
-        # tensors.append(di)  # di or di mask
-
-        grid_tensor = vutils.make_grid(tensors, nrow=6)
-
-    vutils.save_image(grid_tensor, image_path)
-
-
-def new_config(alpha: float, beta: float, gamma: float, name: str) -> Config:
+def new_config(alpha: float, beta: float, gamma: float, name: str, descr: str) -> Config:
     dirs: Directories = setup_directories_with_timestamp(
         results_root="/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/masks/",
         experiment_name="unet",
@@ -217,7 +70,7 @@ def new_config(alpha: float, beta: float, gamma: float, name: str) -> Config:
         num_workers_train=6,
         num_workers_validate=6,
         num_workers_test=6,
-        batch_size=16,
+        batch_size=8,
         num_epochs=200,
         learning_rate=0.01,
         use_validation=True,
@@ -226,16 +79,14 @@ def new_config(alpha: float, beta: float, gamma: float, name: str) -> Config:
         gamma=gamma,  # L2 weight
         dirs=dirs,
         num_network_snapshots=5,
-        image_snapshots_interval=2,
-        descr="Plain Deep shading, last activation is tanh, full buffer with additive mask (di - albedo) instead of DI, output = clamp(output + albedo), SSIM kernel size 7, Loss = SSIM + 0.5 L1. Adadelta optimizer.".format(
-            name
-        ),
+        image_snapshots_interval=1,
+        descr=descr,
     )
 
     return config
 
+
 def run():
-    # cache_dataset_as_tensors("Test")
     buffers_list = [
         BufferType.ALBEDO,
         BufferType.DI,
@@ -268,35 +119,132 @@ def run():
         resolution=512,
         type=DatasetType.ND_ARRAYS,
     )
+    # find_mean_and_stdev(test_dataset_cached)
+    # sanity_check_2(train_dataset_cached, device)
+    # sanity_check(25, train_dataset_cached, buffers_list)
 
     #    utils.benchmark_num_workers(16, train_dataset_cached)
     # utils.benchmark_num_workers(16, train_dataset_cached_arrays)
 
-    ########################## LOAD ##########################
-    # net, device, config = load_saved_network(
-    #     "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/unet_05_13_2021__02_33_19_ssim_l1_l2/network_snapshots/snapshot_epoch_200.tar"
-    # )
-    # io_transform = netutils.ClampGtTransform(device)
-    # Evaluator(config, net, test_dataset_cached, device, io_transform=io_transform, save_results=True, uses_secondary_dataset=False).eval()
-    ##########################################################
-    
-    ########################## TRAIN ##########################
+    load_net: bool = False
+
+    if load_net:
+        run_saved(test_dataset_cached)
+    else:
+        run_new(train_dataset_cached, validation_dataset_cached, test_dataset_cached, buffers_list)
+
+    # trainer.continue_training_loaded_model()
+
+
+def run_saved(test_dataset: Dataset):
+    net, device, config = load_saved_network(
+        "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/masks/unet_05_30_2021__04_08_15_plain/network_snapshots/best_net_epoch_160.tar"
+    )
+    io_transform: netutils.IOTransform = netutils.ClampGtTransform(device=device)
+    Evaluator(config, net, test_dataset, device, io_transform, save_results=True, uses_secondary_dataset=False).eval()
+    Evaluator(config, net, test_dataset, device, io_transform, save_results=True, uses_secondary_dataset=True).eval()
+
+
+def run_new(train_dataset: Dataset, validation_dataset: Dataset, test_dataset: Dataset, buffers_list: List[BufferType]):
     configs = [
-        new_config(alpha=1.0, beta=0.5, gamma=0.0, name="additive_mask"),
+        new_config(
+            alpha=1.0,
+            beta=0.5,
+            gamma=0.0,
+            name="plain",
+            descr="""Plain Deep shading, ResUNet, with Loss = SSIM + 0.5 L1. Adam optimizer.""",
+        ),
+        # new_config(
+        #     alpha=1.0,
+        #     beta=0.5,
+        #     gamma=0.0,
+        #     name="add_oc_no_albedo",
+        #     descr="""Plain Deep shading, last activation is tanh, full buffer OC with Loss = SSIM + 0.5 L1. Adadelta optimizer.""",
+        # ),
+        # new_config(
+        #     alpha=1.0,
+        #     beta=0.5,
+        #     gamma=0.0,
+        #     name="add_mask_batch",
+        #     descr="""Plain Deep shading, BN, last activation is tanh, full buffer with add mask instead of DI,
+        #     network output interpreted as mask and
+        #     compared to gi mask directly, SSIM kernel size 7, Loss = SSIM + 0.5 L1. Adadelta optimizer.""",
+        # ),
+        # new_config(
+        #     alpha=1.0,
+        #     beta=0.5,
+        #     gamma=0.0,
+        #     name="add_mask_instance",
+        #     descr="""Plain Deep shading, BN, last activation is tanh, full buffer with add mask instead of DI,
+        #     network output interpreted as mask and
+        #     compared to gi mask directly, SSIM kernel size 7, Loss = SSIM + 0.5 L1. Adadelta optimizer.""",
+        # ),
+        # new_config(
+        #     alpha=1.0,
+        #     beta=0.5,
+        #     gamma=0.0,
+        #     name="no_mask_batch",
+        #     descr="""Plain Deep shading, BN, last activation is tanh, full buffer with mult mask instead of DI,
+        #     network output interpreted as mask and
+        #     compared to gi mask directly, SSIM kernel size 7, Loss = SSIM + 0.5 L1. Adadelta optimizer.""",
+        # ),
+        # new_config(
+        #     alpha=1.0,
+        #     beta=0.5,
+        #     gamma=0.0,
+        #     name="no_mask_instance",
+        #     descr="""Plain Deep shading, BN, last activation is tanh, full buffer with mult mask instead of DI,
+        #     network output interpreted as mask and
+        #     compared to gi mask directly, SSIM kernel size 7, Loss = SSIM + 0.5 L1. Adadelta optimizer.""",
+        # ),
     ]
 
     num_channels = get_num_channels(buffers_list)
+    device = torch.device("cuda:0")  # if (torch.cuda.is_available() and config.num_gpu > 0) else "cpu")
 
-    for config in configs:
+    for (num, config) in enumerate(configs):
         setup_wandb(config)
-        net, device, io_transform = train_new_network(config, train_dataset_cached, validation_dataset_cached, num_channels)
+        if num == 0:
+            io_transform: netutils.IOTransform = netutils.ClampGtTransform(device=device)#, remove_albedo=False)
+            net = ResUNet(num_channels)
+        # elif num == 1:
+        #     io_transform: netutils.IOTransform = netutils.AdditiveDiMaskTransform(device=device, remove_albedo=True)
+        #     num_channels = num_channels - 3
+        #     net = UNet(num_channels)
+        # elif num == 2:
+        #     io_transform: netutils.IOTransform = netutils.AdditiveDiGtMaskTransform(device=device)
+        #     net = UNetNorm(num_channels, norm_type=NormType.BATCH)
+        # elif num == 3:
+        #     io_transform: netutils.IOTransform = netutils.AdditiveDiGtMaskTransform(device=device)
+        #     net = UNetNorm(num_channels, norm_type=NormType.INSTANCE)
+        # elif num == 4:
+        #     io_transform: netutils.IOTransform = netutils.ClampGtTransform(device=device)
+        #     net = UNetNorm(num_channels, norm_type=NormType.BATCH)
+        # elif num == 5:
+        #     io_transform: netutils.IOTransform = netutils.ClampGtTransform(device=device)
+        #     net = UNetNorm(num_channels, norm_type=NormType.INSTANCE)
 
-        Evaluator(config, net, test_dataset_cached, device, io_transform, save_results=True, uses_secondary_dataset=False).eval()
-    ###########################################################
+        net = net.to(device)
 
-    # sanity_check_2(train_dataset_cached, device) 
+        trainer = Trainer(
+            config=config,
+            train_dataset=train_dataset,
+            net=net,
+            num_channels=num_channels,
+            device=device,
+            io_transform=io_transform,
+            validation_dataset=validation_dataset,
+            outputs_masks=False,
+        )
 
-    # trainer.continue_training_loaded_model()
+        trainer.train()
+
+        Evaluator(
+            config, net, test_dataset, device, io_transform, save_results=True, uses_secondary_dataset=False
+        ).eval()
+        Evaluator(
+            config, net, test_dataset, device, io_transform, save_results=True, uses_secondary_dataset=True
+        ).eval()
 
 
 # tensors = dataset.__getitem__(147)

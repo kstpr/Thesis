@@ -4,6 +4,8 @@ from torch.tensor import Tensor
 import torchvision.utils as vutils
 
 from timeit import default_timer as timer
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.cm as mpcm
 
 # Test random useful junk 
@@ -34,12 +36,15 @@ print(t.shape)
 # print(s.shape)
 
 s = torch.randn(1, 16, 128, 128)
+print(s.shape)
+#upsample = torch.nn.ConvTranspose2d(16, 16, 3, stride=2, padding=1, output_padding=1)
 
-upsample = torch.nn.ConvTranspose2d(16, 16, 3, stride=2, padding=1, output_padding=1)
+#output = upsample(s)
 
-output = upsample(s)
+#print(output.shape)
 
-print(output.shape)
+s = s[:,3:,:]
+print(s.shape)
 
 def scale_for(t: torch.Tensor):
     begin = timer()

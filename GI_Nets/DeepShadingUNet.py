@@ -1,6 +1,7 @@
 from typing import Tuple
 import torch.nn as nn
-from torch import tensor, cat
+from torch import cat
+from torch.tensor import Tensor
 
 # Network structure is strictly translated to PyTorch from the Caffe description, provided by the
 # authors here - http://deep-shading-datasets.mpi-inf.mpg.de/ in section Indirect Light,
@@ -14,7 +15,7 @@ class UNet(nn.Module):
     def __init__(self, num_input_channels: int):
         super(UNet, self).__init__()
         self.non_linearity = nn.LeakyReLU(negative_slope=0.01)
-        self.tanh = nn.Tanh()
+        self.final_nonlinearity = nn.Tanh()
         self.pooling = nn.AvgPool2d(kernel_size=2, stride=2)
 
         # In the Caffe description the authors use Deconvolution layers with weights initialized by a bilinear
@@ -67,21 +68,20 @@ class UNet(nn.Module):
 
         return t
 
-    def down_block(self, input: tensor, down_conv_layer: nn.Module) -> Tuple[tensor, tensor]:
+    def down_block(self, input: Tensor, down_conv_layer: nn.Module) -> Tuple[Tensor, Tensor]:
         t = self.non_linearity(down_conv_layer(input))
         t_cloned = t.clone()
         t = self.pooling(t)
 
         return (t_cloned, t)
 
-    def up_block(self, input: tensor, skip: tensor, up_layer: nn.Module) -> tensor:
+    def up_block(self, input: Tensor, skip: Tensor, up_layer: nn.Module) -> Tensor:
         t = cat((self.upsample(input), skip), 1)
         t = self.non_linearity(up_layer(t))
         return t
     
-    def up_block_tanh(self, input: tensor, skip: tensor, up_layer: nn.Module) -> tensor:
+    def up_block_tanh(self, input: Tensor, skip: Tensor, up_layer: nn.Module) -> Tensor:
         t = cat((self.upsample(input), skip), 1)
-        t = self.tanh(up_layer(t))
-        # [-1, 1] -> [0, 1]
-        # t = (t + 1.0) / 2.0
+        t = self.final_nonlinearity(up_layer(t))
+        
         return t

@@ -1,5 +1,7 @@
 from datawriter import serialize_and_save_config
 from typing import List
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
 from numpy.core.numeric import roll

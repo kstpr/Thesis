@@ -6,6 +6,7 @@ from os.path import join
 from timeit import default_timer as timer
 from typing import List, Optional, Tuple
 from numpy.lib.function_base import diff
+from piq.ssim import MultiScaleSSIMLoss
 
 import torch
 from torch import nn, optim
@@ -20,7 +21,7 @@ from piq import SSIMLoss
 from dacite import from_dict
 
 from config import Config
-from utils import scale_0_1_
+from utils import tosRGB_tensor
 from datawriter import serialize_and_save_config
 import visualization as viz
 from logger import log_batch_stats, log_validation_stats
@@ -37,6 +38,7 @@ class Trainer:
         device: torch.device,
         io_transform: netutils.IOTransform,
         validation_dataset: Optional[Dataset] = None,
+        outputs_masks: bool = False,
     ) -> None:
         self.init_torch()
 
@@ -63,9 +65,27 @@ class Trainer:
         self.net: nn.Module = net
         summary(self.net, input_size=(num_channels, 512, 512))
 
-        self.optimizer = optim.Adadelta(self.net.parameters())
+        self.optimizer = optim.Adam(self.net.parameters()) #optim.Adadelta(self.net.parameters())
+        self.outputs_masks = outputs_masks
 
-        self.samples_indices = [0, 40, 124, 282, 342, 432, 519, 560, 667, 783]
+        # Hardcoded for reproducibility
+        self.samples_indices = [
+            2319,
+            3225,
+            3371,
+            4395,
+            2636,
+            4512,
+            984,
+            733,
+            649,
+            4741,
+            139,
+            4774,
+            4396,
+            4333,
+        ]  # [0, 40, 124, 286, 342, 432, 519, 560, 668, 783]
+
         self.zero_tensor = torch.tensor(0.0)
 
     ### =================================== PUBLIC API ===================================
@@ -115,13 +135,13 @@ class Trainer:
             train_losses.extend(losses)
             # Validate
             if self.config.use_validation:
-                with torch.no_grad():
-                    val_loss = self.validate_epoch(epoch_num, l1_loss_fn, l2_loss_fn, ssim_loss_fn)
-                    val_losses.append(val_loss)
+                val_loss = self.validate_epoch(epoch_num, l1_loss_fn, l2_loss_fn, ssim_loss_fn)
+                val_losses.append(val_loss)
 
-                    if val_loss < min_val_loss:
-                        best_model_epoch = epoch_num
-                        best_model_state = deepcopy(self.net.state_dict())
+                if val_loss < min_val_loss:
+                    min_val_loss = val_loss
+                    best_model_epoch = epoch_num
+                    best_model_state = deepcopy(self.net.state_dict())
 
             self.print_end_epoch(epoch_num, begin_epoch)
 
@@ -129,6 +149,9 @@ class Trainer:
                 self.save_snapshots(epoch_num)
 
             self.save_networks_every_nth_epoch(epoch=epoch_num)
+
+            if (epoch_num % 5 == 0) and self.config.use_validation:
+                self.save_best_network(best_model_epoch, best_model_state)
 
         if self.config.use_validation:
             self.save_best_network(best_model_epoch, best_model_state)
@@ -175,9 +198,11 @@ class Trainer:
 
             self.optimizer.zero_grad()
 
-            gt: Tensor = self.io_transform.transform_gt(gt)
             input: Tensor = self.io_transform.transform_input(input)
-            output: Tensor = self.io_transform.transform_output(input=input, output=self.net(input))
+            gt: Tensor = self.io_transform.transform_gt(gt)
+            output: Tensor = self.io_transform.transform_output(output=self.net(input))
+
+            self.io_transform.clear()
 
             sdsim_loss = (
                 self.structural_dissimilarity_loss(ssim_loss_fn, output, gt)
@@ -217,32 +242,36 @@ class Trainer:
 
     def validate_epoch(self, epoch_num: int, l1_loss_fn, l2_loss_fn, ssim_loss_fn) -> float:
         self.net.eval()
+
         total_loss: float = 0.0
         total_l1_loss: float = 0.0
         total_sdsim_loss: float = 0.0
 
         begin_validation = timer()
 
-        for batch_num, (input, gt) in enumerate(self.validation_dataloader):
-            gt: Tensor = self.io_transform.transform_gt(gt)
-            input: Tensor = self.io_transform.transform_input(input)
-            output: Tensor = self.io_transform.transform_output(input=input, output=self.net(input))
+        with torch.no_grad():
+            for batch_num, (input, gt) in enumerate(self.validation_dataloader):
+                input: Tensor = self.io_transform.transform_input(input)
+                gt: Tensor = self.io_transform.transform_gt(gt)
+                output: Tensor = self.io_transform.transform_output(output=self.net(input))
 
-            sdsim_loss = (
-                self.structural_dissimilarity_loss(ssim_loss_fn, output, gt)
-                if self.config.alpha != 0.0
-                else self.zero_tensor
-            )
-            l1_loss = l1_loss_fn(output, gt) if self.config.beta != 0.0 else self.zero_tensor
-            l2_loss = l2_loss_fn(output, gt) if self.config.gamma != 0.0 else self.zero_tensor
+                self.io_transform.clear()
 
-            loss: Tensor = (
-                (self.config.alpha * sdsim_loss) + (self.config.beta * l1_loss) + (self.config.gamma * l2_loss)
-            )
+                sdsim_loss = (
+                    self.structural_dissimilarity_loss(ssim_loss_fn, output, gt)
+                    if self.config.alpha != 0.0
+                    else self.zero_tensor
+                )
+                l1_loss = l1_loss_fn(output, gt) if self.config.beta != 0.0 else self.zero_tensor
+                l2_loss = l2_loss_fn(output, gt) if self.config.gamma != 0.0 else self.zero_tensor
 
-            total_sdsim_loss += sdsim_loss.detach().cpu().item()
-            total_l1_loss += l1_loss.detach().cpu().item()
-            total_loss += loss.detach().cpu().item()
+                loss: Tensor = (
+                    (self.config.alpha * sdsim_loss) + (self.config.beta * l1_loss) + (self.config.gamma * l2_loss)
+                )
+
+                total_sdsim_loss += sdsim_loss.detach().cpu().item()
+                total_l1_loss += l1_loss.detach().cpu().item()
+                total_loss += loss.detach().cpu().item()
 
         num_batches = len(self.validation_dataloader)
         total_loss /= num_batches
@@ -251,17 +280,21 @@ class Trainer:
 
         log_validation_stats(epoch_num, timer() - begin_validation, total_loss, total_sdsim_loss, total_l1_loss)
 
+        self.net.train()
+
         return total_loss
 
-    def structural_dissimilarity_loss(self, ssim_loss: nn.Module, output: Tensor, ground_truth: Tensor) -> Tensor:
-        """Structural Dissimilarity as described by the auhtors"""
+    # Only in case of need
+    def ssim_sanity_check(self, output: Tensor, ground_truth: Tensor):
         if (torch.any(output < 0.0)) or (torch.any(ground_truth < 0.0)):
             print(
-                "\n\n\Will EXPLODE! output min = {0:.4f}, output max = {1:.4f}, gt min = {2:.4f}, gt max = {1:.4f}\n\n".format(
+                "\n\n\Will EXPLODE! output min = {0:.4f}, output max = {1:.4f}, gt min = {2:.4f}, gt max = {3:.4f}\n\n".format(
                     output.min().item(), output.max().item(), ground_truth.min().item(), ground_truth.max().item()
                 )
             )
 
+    def structural_dissimilarity_loss(self, ssim_loss: nn.Module, output: Tensor, ground_truth: Tensor) -> Tensor:
+        """Structural Dissimilarity as described by the auhtors"""
         one_minus_ssim_val: Tensor = ssim_loss(output, ground_truth)
 
         # TODO these should be constants
@@ -276,23 +309,42 @@ class Trainer:
             for index in self.samples_indices:
                 (sample_input, sample_gt) = self.train_dataset.__getitem__(index)
 
-                sample_gt: Tensor = self.io_transform.transform_gt(sample_gt)
-                sample_input: Tensor = self.io_transform.transform_input(sample_input)
-                sample_output: Tensor = self.io_transform.transform_output(
-                    input=sample_input.unsqueeze(0), output=self.net(sample_input.unsqueeze(0))
+                input_clone = sample_input.clone().to(self.device)
+
+                transformed_input: Tensor = self.io_transform.transform_input(sample_input.unsqueeze(0)).squeeze()
+                transformed_gt: Tensor = self.io_transform.transform_gt_eval(
+                    sample_gt.unsqueeze(0), visualize=True
+                ).squeeze()
+                transformed_output: Tensor = (
+                    self.io_transform.transform_output_eval(
+                        output=self.net(transformed_input.unsqueeze(0)), visualize=True
+                    )
+                    .detach()
+                    .squeeze()
                 )
+                if self.outputs_masks:
+                    mask_gt: Tensor = self.io_transform.transform_gt(sample_gt.unsqueeze(0)).squeeze()
+                    mask_output: Tensor = (
+                        self.io_transform.transform_output(output=self.net(transformed_input.unsqueeze(0)))
+                        .detach()
+                        .squeeze()
+                    )
+                    tensors.append(mask_gt)
+                    tensors.append(mask_output)
 
-                diffuse_albedo = sample_input.squeeze()[0:3, :].clone()
+                self.io_transform.clear()
+
+                diffuse_albedo = tosRGB_tensor(input_clone[0:3, :].clone())
                 tensors.append(diffuse_albedo)
-                di = sample_input.squeeze()[3:6, :].clone()
-                tensors.append(di)  # di or di mask
 
-                sample_output = sample_output.detach().squeeze()
+                di = tosRGB_tensor(input_clone[3:6, :].clone())
+                tensors.append(di)
 
-                tensors.append(sample_gt)
-                tensors.append(sample_output)
+                tensors.append(transformed_gt)
+                tensors.append(transformed_output)
 
-        grid_tensor = vutils.make_grid(tensors, nrow=4).cpu()
+        num_images = 6 if self.outputs_masks else 4
+        grid_tensor = vutils.make_grid(tensors, nrow=num_images).cpu()
         vutils.save_image(grid_tensor, image_path)
 
     def save_networks_every_nth_epoch(self, epoch):
