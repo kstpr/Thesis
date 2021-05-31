@@ -6,19 +6,20 @@ from os.path import join
 from timeit import default_timer as timer
 from typing import List, Optional, Tuple
 from numpy.lib.function_base import diff
-from piq.ssim import MultiScaleSSIMLoss
 
 import torch
 from torch import nn, optim
+from torch.cuda.amp.autocast_mode import autocast
 from torch.nn.modules.loss import L1Loss, MSELoss
 from torch.tensor import Tensor
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset
 import torchvision.utils as vutils
 
+
 from torchsummary import summary
-from piq import SSIMLoss
-from dacite import from_dict
+from piq import SSIMLoss, LPIPS
+from dacite import config, from_dict
 
 from config import Config
 from utils import tosRGB_tensor
@@ -61,11 +62,14 @@ class Trainer:
         self.device = device
         self.io_transform = io_transform
 
-        # TODO get num channels from dataset
         self.net: nn.Module = net
         summary(self.net, input_size=(num_channels, 512, 512))
 
-        self.optimizer = optim.Adam(self.net.parameters()) #optim.Adadelta(self.net.parameters())
+        # TODO pass as a parameter
+        self.optimizer = optim.Adam(self.net.parameters())  # optim.Adadelta(self.net.parameters())
+        # TODO pass as a parameter
+        self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[5, 20, 40, 70], gamma=0.2)
+        
         self.outputs_masks = outputs_masks
 
         # Hardcoded for reproducibility
@@ -73,16 +77,12 @@ class Trainer:
             2319,
             3225,
             3371,
-            4395,
             2636,
             4512,
             984,
             733,
             649,
             4741,
-            139,
-            4774,
-            4396,
             4333,
         ]  # [0, 40, 124, 286, 342, 432, 519, 560, 668, 783]
 
@@ -114,6 +114,7 @@ class Trainer:
             serialize_and_save_config(self.config)
 
         ssim_loss_fn = SSIMLoss(kernel_size=7, data_range=1.0)
+        additional_loss_fn = LPIPS() 
         l2_loss_fn = MSELoss()
         l1_loss_fn = L1Loss()
 
@@ -129,13 +130,13 @@ class Trainer:
             self.print_begin_epoch(epoch_num)
 
             # Train
-            losses = self.train_epoch(epoch_num, l1_loss_fn, l2_loss_fn, ssim_loss_fn)
+            losses = self.train_epoch(epoch_num, l1_loss_fn, l2_loss_fn, ssim_loss_fn, additional_loss_fn)
             print("Train completed for {0:.4f} s".format(timer() - begin_epoch))
 
             train_losses.extend(losses)
             # Validate
             if self.config.use_validation:
-                val_loss = self.validate_epoch(epoch_num, l1_loss_fn, l2_loss_fn, ssim_loss_fn)
+                val_loss = self.validate_epoch(epoch_num, l1_loss_fn, l2_loss_fn, ssim_loss_fn, additional_loss_fn)
                 val_losses.append(val_loss)
 
                 if val_loss < min_val_loss:
@@ -184,7 +185,7 @@ class Trainer:
                 num_workers=self.config.num_workers_train,
             )
 
-    def train_epoch(self, epoch, l1_loss_fn, l2_loss_fn, ssim_loss_fn) -> List[float]:
+    def train_epoch(self, epoch, l1_loss_fn, l2_loss_fn, ssim_loss_fn, additional_loss_fn) -> List[float]:
         losses: List[float] = []
 
         batch_load_start = timer()
@@ -202,6 +203,8 @@ class Trainer:
             gt: Tensor = self.io_transform.transform_gt(gt)
             output: Tensor = self.io_transform.transform_output(output=self.net(input))
 
+            self.ssim_sanity_check(output, gt)
+
             self.io_transform.clear()
 
             sdsim_loss = (
@@ -211,12 +214,17 @@ class Trainer:
             )
             l1_loss = l1_loss_fn(output, gt) if self.config.beta != 0.0 else self.zero_tensor
             l2_loss = l2_loss_fn(output, gt) if self.config.gamma != 0.0 else self.zero_tensor
+            additional_loss = additional_loss_fn(output, gt) if self.config.delta != 0.0 else self.zero_tensor
+
             loss: Tensor = (
-                (self.config.alpha * sdsim_loss) + (self.config.beta * l1_loss) + (self.config.gamma * l2_loss)
+                (self.config.alpha * sdsim_loss)
+                + (self.config.beta * l1_loss)
+                + (self.config.gamma * l2_loss)
+                + (self.config.delta * additional_loss)
             )
 
             loss.backward()
-
+            
             self.optimizer.step()
 
             # TODO may be a bottleneck
@@ -233,18 +241,22 @@ class Trainer:
                     loss_val,
                     sdsim_loss.detach().cpu().item(),
                     l1_loss.detach().cpu().item(),
+                    additional_loss=additional_loss.detach().cpu().item()
                     # l2_loss.detach().cpu().item(),
                 )
 
             batch_load_start = timer()
 
+        self.scheduler.step()
+
         return losses
 
-    def validate_epoch(self, epoch_num: int, l1_loss_fn, l2_loss_fn, ssim_loss_fn) -> float:
+    def validate_epoch(self, epoch_num: int, l1_loss_fn, l2_loss_fn, ssim_loss_fn, additional_loss_fn) -> float:
         self.net.eval()
 
         total_loss: float = 0.0
         total_l1_loss: float = 0.0
+        total_additional_loss: float = 0.0
         total_sdsim_loss: float = 0.0
 
         begin_validation = timer()
@@ -264,21 +276,27 @@ class Trainer:
                 )
                 l1_loss = l1_loss_fn(output, gt) if self.config.beta != 0.0 else self.zero_tensor
                 l2_loss = l2_loss_fn(output, gt) if self.config.gamma != 0.0 else self.zero_tensor
+                additional_loss = additional_loss_fn(output, gt) if self.config.delta != 0.0 else self.zero_tensor
 
                 loss: Tensor = (
-                    (self.config.alpha * sdsim_loss) + (self.config.beta * l1_loss) + (self.config.gamma * l2_loss)
+                    (self.config.alpha * sdsim_loss)
+                    + (self.config.beta * l1_loss)
+                    + (self.config.gamma * l2_loss)
+                    + (self.config.delta * additional_loss)
                 )
 
                 total_sdsim_loss += sdsim_loss.detach().cpu().item()
                 total_l1_loss += l1_loss.detach().cpu().item()
+                total_additional_loss += additional_loss.detach().cpu().item()
                 total_loss += loss.detach().cpu().item()
 
         num_batches = len(self.validation_dataloader)
         total_loss /= num_batches
         total_l1_loss /= num_batches
         total_sdsim_loss /= num_batches
+        total_additional_loss /= num_batches
 
-        log_validation_stats(epoch_num, timer() - begin_validation, total_loss, total_sdsim_loss, total_l1_loss)
+        log_validation_stats(epoch_num, timer() - begin_validation, total_loss, total_sdsim_loss, total_l1_loss, total_additional_loss)
 
         self.net.train()
 

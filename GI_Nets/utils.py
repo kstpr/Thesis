@@ -270,13 +270,7 @@ def benchmark_num_workers(batch_size: int, dataset: Dataset) -> int:
     return best_num_workers
 
 
-def results_to_latex(net_name: str):
-    results_path = (
-        "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/buffer_combinations/{}/results.json".format(
-            net_name
-        )
-    )
-
+def results_to_latex(results_path: str):
     with open(results_path, "r") as read_file:
         results_dict = json.load(read_file)
 
@@ -318,91 +312,11 @@ def find_mean_and_stdev(dataset: Dataset) -> None:  # Tuple[Tensor, Tensor]:
     print(std)
 
 
-DATASET_MEAN = torch.tensor(
-    [
-        0.5569,
-        0.4677,
-        0.4190,
-        0.2718,
-        0.2258,
-        0.2023,
-        0.4931,
-        0.4419,
-        0.4973,
-        0.5009,
-        0.4892,
-        0.1986,
-        0.4995,
-        0.5025,
-        0.1398,
-        0.1559,
-    ]
-)
-
-DATASET_STD = torch.tensor(
-    [
-        0.2797,
-        0.2778,
-        0.2975,
-        0.2165,
-        0.2012,
-        0.2009,
-        0.1867,
-        0.2166,
-        0.1895,
-        0.1956,
-        0.2342,
-        0.1489,
-        0.0487,
-        0.0443,
-        0.0537,
-        0.0535,
-    ]
-)
-
-DATASET_MEAN_MULT_MASK = torch.tensor(
-    [
-        0.5569,
-        0.4677,
-        0.4190,
-        0.8399,
-        0.8594,
-        0.8763,
-        0.4931,
-        0.4419,
-        0.4973,
-        0.5009,
-        0.4892,
-        0.1986,
-        0.4995,
-        0.5025,
-        0.1398,
-        0.1559,
-    ]
-)
-
-DATASET_STD_MULT_MASK = torch.tensor(
-    [
-        0.2797,
-        0.2778,
-        0.2975,
-        0.1187,
-        0.1110,
-        0.1131,
-        0.1867,
-        0.2166,
-        0.1895,
-        0.1956,
-        0.2342,
-        0.1489,
-        0.0487,
-        0.0443,
-        0.0537,
-        0.0535,
-    ]
-)
-
-
 if __name__ == "__main__":
-    net_name = "unet_05_14_2021__17_19_36_normals_only"
-    print(results_to_latex(net_name))
+    net_name = "unet_05_30_2021__19_11_30_full_buffer"
+    results_path = (
+        "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/masks/{}/results.json".format(
+            net_name
+        )
+    )
+    print(results_to_latex(results_path))

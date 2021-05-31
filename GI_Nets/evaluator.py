@@ -1,5 +1,6 @@
 import os
 from numpy.core.fromnumeric import std
+from piq.perceptual import DISTS
 from test import as_color_mapped_image
 from timeit import default_timer as timer
 from typing import List
@@ -12,7 +13,7 @@ from torch.utils.data import DataLoader, dataloader
 from torch.utils.data.dataset import Dataset
 import torchvision.utils as vutils
 
-from piq import ssim, LPIPS
+from piq import ssim, LPIPS, multi_scale_ssim, fsim, gmsd, multi_scale_gmsd, haarpsi, mdsi
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib.cm import get_cmap
@@ -63,6 +64,12 @@ class Evaluator:
         psnr_vals = []
         ssim_vals = []
         lpips_vals = []
+        ms_ssim_vals = []
+        gmsd_vals = []
+        ms_gmsd_vals = []
+        haar_vals = []
+        mdsi_vals = []
+        dists_vals = []
 
         test_size = len(self.dataloader)  # in batches
 
@@ -72,6 +79,7 @@ class Evaluator:
         print("\nEvaluating network performance for test set {}...".format("B" if self.uses_secondary_dataset else "A"))
         with torch.no_grad():
             lpips = LPIPS()
+            dists = DISTS()
             for batch_num, (input, gt) in enumerate(self.dataloader):
                 # Skip last incomplete batch
                 if batch_num == test_size - 1:
@@ -89,6 +97,14 @@ class Evaluator:
                     psnr_vals.append(psnr(output_img, gt_img))
                     ssim_vals.append(ssim(output_img, gt_img, data_range=1.0, kernel_size=7).detach().item())
                     lpips_vals.append(lpips(output_img, gt_img).detach().item())
+
+                    ms_ssim_vals.append(multi_scale_ssim(output_img, gt_img).detach().item())
+                    #fsim_vals.append(fsim(output_img, gt_img))
+                    gmsd_vals.append(gmsd(output_img, gt_img).detach().item())
+                    ms_gmsd_vals.append(multi_scale_gmsd(output_img, gt_img).detach().item())
+                    haar_vals.append(haarpsi(output_img, gt_img).detach().item())
+                    mdsi_vals.append(mdsi(output_img, gt_img).detach().item())
+                    dists_vals.append(dists(output_img, gt_img).detach().item())
 
         print("Evaluating inference time...")
         # evaluate inference time
@@ -113,6 +129,7 @@ class Evaluator:
 
         print("Processing results...")
         self.process_and_save_results(avg, mae_vals, mse_vals, psnr_vals, ssim_vals, lpips_vals, times, begin_eval)
+        self.process_secondary(avg, ms_ssim_vals, gmsd_vals, ms_gmsd_vals, haar_vals, mdsi_vals, dists_vals)
         if self.save_results:
             print("Saving snapshots with diff...")
             self.save_snapshots()
@@ -174,6 +191,47 @@ class Evaluator:
                 std_time,
             )
         )
+
+    def process_secondary(self, avg, ms_ssim_vals, gmsd_vals, ms_gmsd_vals, haar_vals, mdsi_vals, dists_vals):
+        avg_ms_ssim = avg(ms_ssim_vals)
+        std_ms_ssim = std(ms_ssim_vals)
+        avg_gmsd= avg(gmsd_vals)
+        std_gmsd= std(gmsd_vals)
+        avg_ms_gmsd= avg(ms_gmsd_vals)
+        std_ms_gmsd= std(ms_gmsd_vals)
+        avg_haar= avg(haar_vals)
+        std_haar= std(haar_vals)
+        avg_mdsi= avg(mdsi_vals)
+        std_mdsi= std(mdsi_vals)
+        avg_dists= avg(dists_vals)
+        std_dists= std(dists_vals)
+        print(
+            """Secondary Results {0}:
+            MS-SSIM = {1:.4f} +/- {2:.4f}
+            FSIM = {3:.4f} +/- {4:.4f}
+            GMSD = {5:.4f} +/- {6:.4f}
+            MS-GMSD = {7:.4f} +/- {8:.4f}
+            HAAR = {9:.4f}  +/- {10:.4f}
+            MDSI = {11:.4f}  +/- {12:.4f}
+            DISTS = {13:.4f}  +/- {14:.4f}""".format(
+                "",
+                avg_ms_ssim,
+                std_ms_ssim,
+                99999.9,
+                99999.9,
+                avg_gmsd,
+                std_gmsd,
+                avg_ms_gmsd,
+                std_ms_gmsd,
+                avg_haar,
+                std_haar,
+                avg_mdsi,
+                std_mdsi,
+                avg_dists,
+                std_dists,
+            )
+        )
+
 
     def save_snapshots(self):
         save_dir = self.config.dirs.test_output_samples_dir

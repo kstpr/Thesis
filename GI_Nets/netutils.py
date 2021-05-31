@@ -6,7 +6,7 @@ from torch.tensor import Tensor
 from torchvision.transforms import Normalize
 from typing import List, Tuple
 
-from utils import DATASET_MEAN_MULT_MASK, DATASET_STD_MULT_MASK, tosRGB_tensor, DATASET_MEAN, DATASET_STD
+from utils import tosRGB_tensor
 from GIDataset import ALL_INPUT_BUFFERS_CANONICAL, BufferType
 
 ZERO_TENSOR = torch.tensor(0.0)
@@ -64,7 +64,7 @@ class ClampGtTransform(IOTransform):
         return super().transform_input(input)
 
     def transform_output(self, output: Tensor) -> Tensor:
-        return output#(output + 1.0) / 2.0
+        return output.nan_to_num()#(output + 1.0) / 2.0
 
     def transform_gt(self, gt: Tensor) -> Tensor:
         return gt.to(self.device).clamp(0.0, 1.0)
@@ -168,8 +168,8 @@ class MultDiMaskTransform(IOTransform):
         super().__init__(device)
         self.remove_albedo = remove_albedo
         self.normalize_input = normalize_input
-        if self.normalize_input:
-            self.normalizer = Normalize(DATASET_MEAN_MULT_MASK, DATASET_STD_MULT_MASK)
+        # if self.normalize_input:
+        #     self.normalizer = Normalize(DATASET_MEAN_MULT_MASK, DATASET_STD_MULT_MASK)
 
     def transform_input(self, input: Tensor) -> Tensor:
         input = super().transform_input(input)
@@ -204,8 +204,8 @@ class MultDiGtMaskTransform(IOTransform):
         super().__init__(device)
         self.remove_albedo = remove_albedo
         self.normalize_input = normalize_input
-        if self.normalize_input:
-            self.normalizer = Normalize(DATASET_MEAN_MULT_MASK, DATASET_STD_MULT_MASK)
+        # if self.normalize_input:
+        #     self.normalizer = Normalize(DATASET_MEAN_MULT_MASK, DATASET_STD_MULT_MASK)
 
     def transform_input(self, input: Tensor) -> Tensor:
         input = super().transform_input(input)

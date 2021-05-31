@@ -1,5 +1,5 @@
 # %%
-from ResUNet import ResUNet
+from ResUNet import Activation, ResUNet
 from typing import List, Tuple
 
 import torch
@@ -52,16 +52,16 @@ def load_saved_network(checkpoint_path: str, num_channels=16) -> Tuple[nn.Module
 
     device = torch.device("cuda:0" if (torch.cuda.is_available() and config.num_gpu > 0) else "cpu")
     # TODO Manually instantiates the network, should be automated
-    net = UNet(num_channels).to(device)
+    net = ResUNet(num_channels, final_activation=Activation.SIGMOID).to(device)
     net = load_net_from_saved_net_descr(checkpoint, net)
 
     return (net, device, config)
 
 
-def new_config(alpha: float, beta: float, gamma: float, name: str, descr: str) -> Config:
+def new_config(alpha: float, beta: float, gamma: float, delta:float, name: str, descr: str) -> Config:
     dirs: Directories = setup_directories_with_timestamp(
-        results_root="/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/masks/",
-        experiment_name="unet",
+        results_root="/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/resunet/",
+        experiment_name="resunet",
         additional_data=name,
     )
 
@@ -71,12 +71,13 @@ def new_config(alpha: float, beta: float, gamma: float, name: str, descr: str) -
         num_workers_validate=6,
         num_workers_test=6,
         batch_size=8,
-        num_epochs=200,
+        num_epochs=100,
         learning_rate=0.01,
         use_validation=True,
         alpha=alpha,  # SDSIM weight
         beta=beta,  # L1 weight
         gamma=gamma,  # L2 weight
+        delta=delta, # Haar weight
         dirs=dirs,
         num_network_snapshots=5,
         image_snapshots_interval=1,
@@ -138,11 +139,11 @@ def run():
 
 def run_saved(test_dataset: Dataset):
     net, device, config = load_saved_network(
-        "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/masks/unet_05_30_2021__04_08_15_plain/network_snapshots/best_net_epoch_160.tar"
+        "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/resunet/resunet_05_31_2021__13_57_07_vanilla_lr_sched/network_snapshots/best_net_epoch_10.tar"
     )
     io_transform: netutils.IOTransform = netutils.ClampGtTransform(device=device)
-    Evaluator(config, net, test_dataset, device, io_transform, save_results=True, uses_secondary_dataset=False).eval()
-    Evaluator(config, net, test_dataset, device, io_transform, save_results=True, uses_secondary_dataset=True).eval()
+    Evaluator(config, net, test_dataset, device, io_transform, save_results=False, uses_secondary_dataset=False).eval()
+    # Evaluator(config, net, test_dataset, device, io_transform, save_results=True, uses_secondary_dataset=True).eval()
 
 
 def run_new(train_dataset: Dataset, validation_dataset: Dataset, test_dataset: Dataset, buffers_list: List[BufferType]):
@@ -151,52 +152,10 @@ def run_new(train_dataset: Dataset, validation_dataset: Dataset, test_dataset: D
             alpha=1.0,
             beta=0.5,
             gamma=0.0,
-            name="plain",
-            descr="""Plain Deep shading, ResUNet, with Loss = SSIM + 0.5 L1. Adam optimizer.""",
+            delta=0.0,
+            name="vanilla_lr_sched",
+            descr="""ResUNet 4 layers, full buffer with Loss = SDSIM + 0.5 L1. Adam optimizer with lr sched [6, 20, 40, 70], gamma = 0.3.""",
         ),
-        # new_config(
-        #     alpha=1.0,
-        #     beta=0.5,
-        #     gamma=0.0,
-        #     name="add_oc_no_albedo",
-        #     descr="""Plain Deep shading, last activation is tanh, full buffer OC with Loss = SSIM + 0.5 L1. Adadelta optimizer.""",
-        # ),
-        # new_config(
-        #     alpha=1.0,
-        #     beta=0.5,
-        #     gamma=0.0,
-        #     name="add_mask_batch",
-        #     descr="""Plain Deep shading, BN, last activation is tanh, full buffer with add mask instead of DI,
-        #     network output interpreted as mask and
-        #     compared to gi mask directly, SSIM kernel size 7, Loss = SSIM + 0.5 L1. Adadelta optimizer.""",
-        # ),
-        # new_config(
-        #     alpha=1.0,
-        #     beta=0.5,
-        #     gamma=0.0,
-        #     name="add_mask_instance",
-        #     descr="""Plain Deep shading, BN, last activation is tanh, full buffer with add mask instead of DI,
-        #     network output interpreted as mask and
-        #     compared to gi mask directly, SSIM kernel size 7, Loss = SSIM + 0.5 L1. Adadelta optimizer.""",
-        # ),
-        # new_config(
-        #     alpha=1.0,
-        #     beta=0.5,
-        #     gamma=0.0,
-        #     name="no_mask_batch",
-        #     descr="""Plain Deep shading, BN, last activation is tanh, full buffer with mult mask instead of DI,
-        #     network output interpreted as mask and
-        #     compared to gi mask directly, SSIM kernel size 7, Loss = SSIM + 0.5 L1. Adadelta optimizer.""",
-        # ),
-        # new_config(
-        #     alpha=1.0,
-        #     beta=0.5,
-        #     gamma=0.0,
-        #     name="no_mask_instance",
-        #     descr="""Plain Deep shading, BN, last activation is tanh, full buffer with mult mask instead of DI,
-        #     network output interpreted as mask and
-        #     compared to gi mask directly, SSIM kernel size 7, Loss = SSIM + 0.5 L1. Adadelta optimizer.""",
-        # ),
     ]
 
     num_channels = get_num_channels(buffers_list)
@@ -206,23 +165,7 @@ def run_new(train_dataset: Dataset, validation_dataset: Dataset, test_dataset: D
         setup_wandb(config)
         if num == 0:
             io_transform: netutils.IOTransform = netutils.ClampGtTransform(device=device)#, remove_albedo=False)
-            net = ResUNet(num_channels)
-        # elif num == 1:
-        #     io_transform: netutils.IOTransform = netutils.AdditiveDiMaskTransform(device=device, remove_albedo=True)
-        #     num_channels = num_channels - 3
-        #     net = UNet(num_channels)
-        # elif num == 2:
-        #     io_transform: netutils.IOTransform = netutils.AdditiveDiGtMaskTransform(device=device)
-        #     net = UNetNorm(num_channels, norm_type=NormType.BATCH)
-        # elif num == 3:
-        #     io_transform: netutils.IOTransform = netutils.AdditiveDiGtMaskTransform(device=device)
-        #     net = UNetNorm(num_channels, norm_type=NormType.INSTANCE)
-        # elif num == 4:
-        #     io_transform: netutils.IOTransform = netutils.ClampGtTransform(device=device)
-        #     net = UNetNorm(num_channels, norm_type=NormType.BATCH)
-        # elif num == 5:
-        #     io_transform: netutils.IOTransform = netutils.ClampGtTransform(device=device)
-        #     net = UNetNorm(num_channels, norm_type=NormType.INSTANCE)
+            net = ResUNet(num_channels, final_activation=Activation.SIGMOID)
 
         net = net.to(device)
 
