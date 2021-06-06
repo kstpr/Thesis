@@ -1,4 +1,5 @@
 import enum
+from enums import NormType
 from typing import Tuple
 import torch.nn as nn
 from torch import cat
@@ -15,9 +16,6 @@ from torch.nn.modules.normalization import GroupNorm
 # to the one found here - https://github.com/wjw12/Deep-Shading/blob/master/GI_model.py
 
 
-class NormType(enum.Enum):
-    BATCH = 1
-    INSTANCE = 2
 
 class UNetNorm(nn.Module):
     def __init__(self, num_input_channels: int, norm_type: NormType, only_contracting:bool = False, only_expanding:bool= False):

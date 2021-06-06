@@ -25,7 +25,8 @@ class Config:
     num_epochs: int
     learning_rate: float
     use_validation: bool
-
+    use_lr_scheduler: bool
+    
     # Losses Weights
     alpha: float
     beta: float

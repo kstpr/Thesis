@@ -15,7 +15,8 @@ import torchvision.utils as vutils
 
 from piq import ssim, LPIPS, multi_scale_ssim, fsim, gmsd, multi_scale_gmsd, haarpsi, mdsi
 import matplotlib
-matplotlib.use('Agg')
+
+matplotlib.use("Agg")
 from matplotlib.cm import get_cmap
 
 from config import Config
@@ -30,7 +31,7 @@ class Evaluator:
         self,
         config: Config,
         net: nn.Module,
-        test_dataset: Dataset,
+        dataset: Dataset,
         device: torch.device,
         io_transform: netutils.IOTransform,
         save_results: bool = True,
@@ -42,9 +43,9 @@ class Evaluator:
         self.net: nn.Module = net
         self.net.eval()
 
-        self.dataset: Dataset = test_dataset
+        self.dataset: Dataset = dataset
         self.dataloader = DataLoader(
-            dataset=test_dataset,
+            dataset=dataset,
             batch_size=self.config.batch_size,
             shuffle=True,
             num_workers=self.config.num_workers_test,
@@ -53,7 +54,7 @@ class Evaluator:
         self.device: torch.device = device
         self.io_transform: netutils.IOTransform = io_transform
 
-        self.sample_indices = torch.randint(0, len(test_dataset), (40,))
+        self.sample_indices = torch.randint(0, len(dataset), (40,))
         self.uses_secondary_dataset = uses_secondary_dataset
 
     def eval(self) -> None:
@@ -99,7 +100,7 @@ class Evaluator:
                     lpips_vals.append(lpips(output_img, gt_img).detach().item())
 
                     ms_ssim_vals.append(multi_scale_ssim(output_img, gt_img).detach().item())
-                    #fsim_vals.append(fsim(output_img, gt_img))
+                    # fsim_vals.append(fsim(output_img, gt_img))
                     gmsd_vals.append(gmsd(output_img, gt_img).detach().item())
                     ms_gmsd_vals.append(multi_scale_gmsd(output_img, gt_img).detach().item())
                     haar_vals.append(haarpsi(output_img, gt_img).detach().item())
@@ -133,6 +134,36 @@ class Evaluator:
         if self.save_results:
             print("Saving snapshots with diff...")
             self.save_snapshots()
+
+    def test_inference(self):
+        times: List[float] = []
+
+        with torch.no_grad():
+            skip_num = 100
+            skip = 0
+            for i in range(2):
+                begin_epoch = timer()
+
+                for i in range(len(self.dataset)):
+                    #begin = timer()
+
+                    input = self.dataset[i][0].unsqueeze(0).to(self.device)
+                    output: Tensor = self.net(input)
+
+                    #t = timer() - begin
+                    # if skip < skip_num:
+                    #     skip = skip + 1
+                    # else:
+                    #     times.append(t)
+
+                epoch_time = timer() - begin_epoch
+                print(
+                    "Epoch for {0:.4f} s, single item for {1:.4f} s".format(
+                        epoch_time, epoch_time / len(self.dataloader)
+                    )
+                )
+
+            print("Single item avg: {0:.4f} s".format(sum(times) / len(times)))
 
     def process_and_save_results(self, avg, mae_vals, mse_vals, psnr_vals, ssim_vals, lpips_vals, times, begin_eval):
         # Measures
@@ -195,16 +226,16 @@ class Evaluator:
     def process_secondary(self, avg, ms_ssim_vals, gmsd_vals, ms_gmsd_vals, haar_vals, mdsi_vals, dists_vals):
         avg_ms_ssim = avg(ms_ssim_vals)
         std_ms_ssim = std(ms_ssim_vals)
-        avg_gmsd= avg(gmsd_vals)
-        std_gmsd= std(gmsd_vals)
-        avg_ms_gmsd= avg(ms_gmsd_vals)
-        std_ms_gmsd= std(ms_gmsd_vals)
-        avg_haar= avg(haar_vals)
-        std_haar= std(haar_vals)
-        avg_mdsi= avg(mdsi_vals)
-        std_mdsi= std(mdsi_vals)
-        avg_dists= avg(dists_vals)
-        std_dists= std(dists_vals)
+        avg_gmsd = avg(gmsd_vals)
+        std_gmsd = std(gmsd_vals)
+        avg_ms_gmsd = avg(ms_gmsd_vals)
+        std_ms_gmsd = std(ms_gmsd_vals)
+        avg_haar = avg(haar_vals)
+        std_haar = std(haar_vals)
+        avg_mdsi = avg(mdsi_vals)
+        std_mdsi = std(mdsi_vals)
+        avg_dists = avg(dists_vals)
+        std_dists = std(dists_vals)
         print(
             """Secondary Results {0}:
             MS-SSIM = {1:.4f} +/- {2:.4f}
@@ -232,9 +263,9 @@ class Evaluator:
             )
         )
 
-
     def save_snapshots(self):
         save_dir = self.config.dirs.test_output_samples_dir
+
         if self.uses_secondary_dataset:
             save_dir = save_dir[:-2] + "_secondary/"
             os.mkdir(save_dir)

@@ -1,4 +1,8 @@
 import dataclasses
+import enum
+
+from torch._C import OptionalType
+from enums import OptimizerType
 import logging
 from copy import deepcopy
 import random
@@ -6,6 +10,7 @@ from os.path import join
 from timeit import default_timer as timer
 from typing import List, Optional, Tuple
 from numpy.lib.function_base import diff
+from piq.ssim import MultiScaleSSIMLoss
 
 import torch
 from torch import nn, optim
@@ -28,7 +33,6 @@ import visualization as viz
 from logger import log_batch_stats, log_validation_stats
 import netutils
 
-
 class Trainer:
     def __init__(
         self,
@@ -39,7 +43,7 @@ class Trainer:
         device: torch.device,
         io_transform: netutils.IOTransform,
         validation_dataset: Optional[Dataset] = None,
-        outputs_masks: bool = False,
+        optimizer_type: OptimizerType = OptimizerType.ADAM, # TODO add to config
     ) -> None:
         self.init_torch()
 
@@ -65,12 +69,13 @@ class Trainer:
         self.net: nn.Module = net
         summary(self.net, input_size=(num_channels, 512, 512))
 
-        # TODO pass as a parameter
-        self.optimizer = optim.Adam(self.net.parameters())  # optim.Adadelta(self.net.parameters())
-        # TODO pass as a parameter
-        self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[5, 20, 40, 70], gamma=0.2)
+        self.optimizer: optim.Optimizer = self.create_optimizer(optimizer_type)
         
-        self.outputs_masks = outputs_masks
+        # TODO make this more polite
+        if config.use_lr_scheduler:
+            self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[5, 20, 40, 70], gamma=0.2)
+        else:
+            self.scheduler = None
 
         # Hardcoded for reproducibility
         self.samples_indices = [
@@ -151,8 +156,12 @@ class Trainer:
 
             self.save_networks_every_nth_epoch(epoch=epoch_num)
 
-            if (epoch_num % 5 == 0) and self.config.use_validation:
+            if (epoch_num % 10 == 0) and self.config.use_validation:
                 self.save_best_network(best_model_epoch, best_model_state)
+
+            if epoch_num - best_model_epoch > self.config.num_epochs // 10:
+                # Stop training if the results don't improve for some epochs
+                break
 
         if self.config.use_validation:
             self.save_best_network(best_model_epoch, best_model_state)
@@ -173,6 +182,12 @@ class Trainer:
         print(manualSeed)
         random.seed(manualSeed)
         torch.manual_seed(manualSeed)
+
+    def create_optimizer(self, optimizer_type: OptimizerType) -> torch.optim.Optimizer:
+        if optimizer_type == OptimizerType.ADADELTA:
+            return optim.Adadelta(self.net.parameters())
+        elif optimizer_type == OptimizerType.ADAM:
+            return optim.Adam(self.net.parameters())
 
     def init_validation_dataloader_if_needed(self, validation_dataset: Optional[Dataset]):
         if self.config.use_validation:
@@ -202,8 +217,6 @@ class Trainer:
             input: Tensor = self.io_transform.transform_input(input)
             gt: Tensor = self.io_transform.transform_gt(gt)
             output: Tensor = self.io_transform.transform_output(output=self.net(input))
-
-            self.ssim_sanity_check(output, gt)
 
             self.io_transform.clear()
 
@@ -247,7 +260,8 @@ class Trainer:
 
             batch_load_start = timer()
 
-        self.scheduler.step()
+        if not self.scheduler is None:
+            self.scheduler.step()
 
         return losses
 
@@ -340,15 +354,6 @@ class Trainer:
                     .detach()
                     .squeeze()
                 )
-                if self.outputs_masks:
-                    mask_gt: Tensor = self.io_transform.transform_gt(sample_gt.unsqueeze(0)).squeeze()
-                    mask_output: Tensor = (
-                        self.io_transform.transform_output(output=self.net(transformed_input.unsqueeze(0)))
-                        .detach()
-                        .squeeze()
-                    )
-                    tensors.append(mask_gt)
-                    tensors.append(mask_output)
 
                 self.io_transform.clear()
 
@@ -361,7 +366,7 @@ class Trainer:
                 tensors.append(transformed_gt)
                 tensors.append(transformed_output)
 
-        num_images = 6 if self.outputs_masks else 4
+        num_images = 4
         grid_tensor = vutils.make_grid(tensors, nrow=num_images).cpu()
         vutils.save_image(grid_tensor, image_path)
 

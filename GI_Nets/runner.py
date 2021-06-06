@@ -1,5 +1,4 @@
 # %%
-from ResUNet import Activation, ResUNet
 from typing import List, Tuple
 
 import torch
@@ -8,6 +7,7 @@ from torch.utils.data.dataset import Dataset
 
 import wandb
 from dacite import from_dict
+from wandb.sdk.wandb_run import Run
 
 from DeepShadingUNetBN import NormType, UNetNorm
 from evaluator import Evaluator
@@ -17,22 +17,27 @@ from GIDataset import BufferType
 from config import Config, Directories
 from trainer import Trainer
 import netutils
+from ResUNet import ResUNet
+from enums import Activation, NormType, OptimizerType
 from utils import (
     setup_directories_with_timestamp,
     undo_export_transforms_for_nd_arrays,
     sanity_check,
-    sanity_check_2,
+    # sanity_check_2,
     find_mean_and_stdev,
 )
 
 
-def setup_wandb(config: Config):
-    wandb.init(settings=wandb.Settings(start_method="fork"), entity="kpresnakov", project="gi")
+def setup_wandb(config: Config) -> Run:
+    run = wandb.init(settings=wandb.Settings(start_method="fork"), entity="kpresnakov", project="gi", reinit=True)
 
     wandb_config = wandb.config  # Initialize config
     wandb_config.batch_size = config.batch_size  # input batch size for training (default: 64)
     wandb_config.epochs = config.num_epochs  # number of epochs to train (default: 10)
     wandb_config.log_interval = config.batches_log_interval  # how many batches to wait before logging training status
+    wandb_config.decr = config.descr
+
+    return run
 
 
 def load_config_from_saved_net_descr(checkpoint: dict) -> Config:
@@ -52,32 +57,38 @@ def load_saved_network(checkpoint_path: str, num_channels=16) -> Tuple[nn.Module
 
     device = torch.device("cuda:0" if (torch.cuda.is_available() and config.num_gpu > 0) else "cpu")
     # TODO Manually instantiates the network, should be automated
-    net = ResUNet(num_channels, final_activation=Activation.SIGMOID).to(device)
+    #net =  ResUNet(num_channels, final_activation=Activation.TANH, levels=6).to(device)
+    net = UNet(num_channels)
     net = load_net_from_saved_net_descr(checkpoint, net)
+    net = net.to(device)
 
     return (net, device, config)
 
 
-def new_config(alpha: float, beta: float, gamma: float, delta:float, name: str, descr: str) -> Config:
-    dirs: Directories = setup_directories_with_timestamp(
-        results_root="/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/resunet/",
-        experiment_name="resunet",
-        additional_data=name,
-    )
-
+def new_config(
+    alpha: float,
+    beta: float,
+    gamma: float,
+    delta: float,
+    dirs: Directories,
+    descr: str,
+    num_epochs: int = 100,
+    use_lr_scheduler: bool = False,
+) -> Config:
     config: Config = Config(
         num_gpu=1,
         num_workers_train=6,
         num_workers_validate=6,
         num_workers_test=6,
         batch_size=8,
-        num_epochs=100,
+        num_epochs=num_epochs,
         learning_rate=0.01,
         use_validation=True,
+        use_lr_scheduler=use_lr_scheduler,
         alpha=alpha,  # SDSIM weight
         beta=beta,  # L1 weight
         gamma=gamma,  # L2 weight
-        delta=delta, # Haar weight
+        delta=delta,  # Additional term weight
         dirs=dirs,
         num_network_snapshots=5,
         image_snapshots_interval=1,
@@ -130,43 +141,53 @@ def run():
     load_net: bool = False
 
     if load_net:
-        run_saved(test_dataset_cached)
+        run_saved(test_dataset_cached, validation_dataset_cached)
     else:
         run_new(train_dataset_cached, validation_dataset_cached, test_dataset_cached, buffers_list)
 
     # trainer.continue_training_loaded_model()
 
 
-def run_saved(test_dataset: Dataset):
+def run_saved(dataset: Dataset, validation_dataset: Dataset):
     net, device, config = load_saved_network(
-        "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/resunet/resunet_05_31_2021__13_57_07_vanilla_lr_sched/network_snapshots/best_net_epoch_10.tar"
+        "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/masks/unet_n_06_03_2021__17_47_08_no_albedo/network_snapshots/best_net_epoch_166.tar", num_channels=13
     )
-    io_transform: netutils.IOTransform = netutils.ClampGtTransform(device=device)
-    Evaluator(config, net, test_dataset, device, io_transform, save_results=False, uses_secondary_dataset=False).eval()
-    # Evaluator(config, net, test_dataset, device, io_transform, save_results=True, uses_secondary_dataset=True).eval()
+    io_transform: netutils.IOTransform = netutils.MultDiMaskTransform(device=device, remove_albedo=True)
+    Evaluator(config, net, dataset, device, io_transform, save_results=True, uses_secondary_dataset=False).eval()
+    Evaluator(
+        config, net, validation_dataset, device, io_transform, save_results=True, uses_secondary_dataset=True
+    ).eval()
 
 
 def run_new(train_dataset: Dataset, validation_dataset: Dataset, test_dataset: Dataset, buffers_list: List[BufferType]):
+    dirs3: Directories = setup_directories_with_timestamp(
+        results_root="/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/resunet/",
+        experiment_name="resunet",
+        additional_data="complexity",
+    )
+
     configs = [
         new_config(
             alpha=1.0,
             beta=0.5,
             gamma=0.0,
             delta=0.0,
-            name="vanilla_lr_sched",
-            descr="""ResUNet 4 layers, full buffer with Loss = SDSIM + 0.5 L1. Adam optimizer with lr sched [6, 20, 40, 70], gamma = 0.3.""",
+            dirs=dirs3,
+            descr="""ResUNet 6 layers, full buffer with Loss = SDSIM + 0.5 L1 + 0.5 LPIPS. Batch Norm. Adam optimizer with lr sched [6, 20, 40, 70], gamma = 0.2.""",
+            use_lr_scheduler=True,
         ),
     ]
 
-    num_channels = get_num_channels(buffers_list)
     device = torch.device("cuda:0")  # if (torch.cuda.is_available() and config.num_gpu > 0) else "cpu")
 
     for (num, config) in enumerate(configs):
-        setup_wandb(config)
-        if num == 0:
-            io_transform: netutils.IOTransform = netutils.ClampGtTransform(device=device)#, remove_albedo=False)
-            net = ResUNet(num_channels, final_activation=Activation.SIGMOID)
+        run = setup_wandb(config)
+        num_channels = get_num_channels(buffers_list)
 
+        if num == 0:
+            io_transform: netutils.IOTransform = netutils.ClampGtTransform(device=device)
+            #et = UNet(num_channels)
+            net = ResUNet(num_channels, final_activation=Activation.SIGMOID, levels=6, norm_type=NormType.BATCH)
         net = net.to(device)
 
         trainer = Trainer(
@@ -177,17 +198,23 @@ def run_new(train_dataset: Dataset, validation_dataset: Dataset, test_dataset: D
             device=device,
             io_transform=io_transform,
             validation_dataset=validation_dataset,
-            outputs_masks=False,
+            optimizer_type=OptimizerType.ADAM
         )
-
-        trainer.train()
 
         Evaluator(
             config, net, test_dataset, device, io_transform, save_results=True, uses_secondary_dataset=False
-        ).eval()
-        Evaluator(
-            config, net, test_dataset, device, io_transform, save_results=True, uses_secondary_dataset=True
-        ).eval()
+        ).test_inference()
+
+        # trainer.train()
+
+        # Evaluator(
+        #     config, net, test_dataset, device, io_transform, save_results=True, uses_secondary_dataset=False
+        # ).eval()
+        # Evaluator(
+        #     config, net, validation_dataset, device, io_transform, save_results=True, uses_secondary_dataset=True
+        # ).eval()
+
+        run.finish()
 
 
 # tensors = dataset.__getitem__(147)

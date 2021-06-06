@@ -8,7 +8,6 @@ from timeit import default_timer as timer
 import json
 from datetime import datetime
 
-from numpy.lib import utils
 import numpy as np
 
 import torch
@@ -18,7 +17,6 @@ from torch.utils.data.dataset import Dataset
 from torch.utils.data import DataLoader
 
 from GIDataset import ALL_INPUT_BUFFERS_CANONICAL, BufferType, GIDataset
-import netutils
 from config import Directories
 
 
@@ -161,7 +159,7 @@ def sanity_check(num_sample_indices: int, train_dataset: Dataset, buffers_list: 
     print("Sanity check image saved in {}".format(image_path))
 
 
-def sanity_check_2(dataset: Dataset, device):
+""" def sanity_check_2(dataset: Dataset, device):
     image_path = "sanity_test.png"
 
     tensors = []
@@ -191,7 +189,7 @@ def sanity_check_2(dataset: Dataset, device):
 
         grid_tensor = vutils.make_grid(tensors, nrow=5)
 
-    vutils.save_image(grid_tensor, image_path)
+    vutils.save_image(grid_tensor, image_path) """
 
 
 def reserialize_tensors_dataset_as_ndarrays(tensors_dataset_path: str, ndarrays_dataset_path: str) -> None:
@@ -274,6 +272,10 @@ def results_to_latex(results_path: str):
     with open(results_path, "r") as read_file:
         results_dict = json.load(read_file)
 
+    return results_to_latex_d(results_dict=results_dict)
+
+
+def results_to_latex_d(results_dict):
     results_latex = "\\textbf{{}}          & {0}     & {1}     & {2}     & {3}    & {4}     \\\\ \hdashline".format(
         results_dict["mae"], results_dict["mse"], results_dict["ssim"], results_dict["psnr"], results_dict["lpips"]
     )
@@ -313,10 +315,6 @@ def find_mean_and_stdev(dataset: Dataset) -> None:  # Tuple[Tensor, Tensor]:
 
 
 if __name__ == "__main__":
-    net_name = "unet_05_30_2021__19_11_30_full_buffer"
-    results_path = (
-        "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/masks/{}/results.json".format(
-            net_name
-        )
-    )
+    net_name = "resunet_06_01_2021__17_43_42_vanilla_lr_sched_6"
+    results_path = "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/resunet/{}/results_secondary_test_set.json".format(net_name)
     print(results_to_latex(results_path))

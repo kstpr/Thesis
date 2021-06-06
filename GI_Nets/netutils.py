@@ -168,6 +168,7 @@ class MultDiMaskTransform(IOTransform):
         super().__init__(device)
         self.remove_albedo = remove_albedo
         self.normalize_input = normalize_input
+        self.min_positive = torch.finfo(torch.float32).tiny
         # if self.normalize_input:
         #     self.normalizer = Normalize(DATASET_MEAN_MULT_MASK, DATASET_STD_MULT_MASK)
 
@@ -182,11 +183,11 @@ class MultDiMaskTransform(IOTransform):
         return input
 
     def transform_output(self, output: Tensor) -> Tensor:
-        output_mask = PI_OVER_2 * output  # in [-PI/2,PI/2]
-        output_mask = torch.exp(torch.tan(output_mask)).nan_to_num()
+        output_mask = (PI_OVER_2) * output * 0.992824927 # in [-PI/2,PI/2] 
+        output_mask = torch.exp(torch.tan(output_mask))
 
-        albedo = self.unmodified_input[:, 0:3, :].clamp(0.0, 1.0)
-        result = (output_mask * albedo).nan_to_num()
+        albedo = self.unmodified_input[:, 0:3, :].clamp(self.min_positive, 1.0)
+        result = (output_mask * albedo)
         return result.clamp(0.0, 1.0)
 
     def transform_gt(self, gt: Tensor) -> Tensor:

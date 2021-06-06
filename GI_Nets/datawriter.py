@@ -1,3 +1,4 @@
+from utils import results_to_latex_d
 from config import Config
 import json
 import dataclasses
@@ -34,5 +35,9 @@ def serialize_and_save_results(
             "lpips": "{0:.4f} +/- {1:.4f}".format(lpips, lpips_std),
             "time": "{0:.4f} +/- {1:.4f}".format(time, time_std),
         }
+        
+        latex_ready = results_to_latex_d(results_dict)
+        results_dict["latex"] = latex_ready
+
         text_file.write(json.dumps(results_dict, indent=4))
 
