@@ -1,7 +1,4 @@
 from dataclasses import dataclass
-from typing import List
-from GIDataset import BufferType
-
 
 @dataclass
 class Directories:
@@ -45,6 +42,21 @@ class Config:
     batches_log_interval: int = 50
 
     descr: str = ""
+
+
+@dataclass
+class ConfigGAN(Config):
+    lr_optim_G: float = 0.0002
+    lr_optim_D: float = 0.0002
+
+    optim_G_beta_1: float = -1
+    optim_G_beta_2: float = -1
+
+    optim_D_beta_1: float = -1
+    optim_D_beta_2: float = -1
+
+    lambda_l1: float = 100.0
+
 
 # Config used up to ResUNet
 

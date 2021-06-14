@@ -6,7 +6,7 @@ from torch.tensor import Tensor
 from torchvision.transforms import Normalize
 from typing import List, Tuple
 
-from utils import tosRGB_tensor
+from utils.utils import tosRGB_tensor
 from GIDataset import ALL_INPUT_BUFFERS_CANONICAL, BufferType
 
 ZERO_TENSOR = torch.tensor(0.0)
@@ -64,7 +64,7 @@ class ClampGtTransform(IOTransform):
         return super().transform_input(input)
 
     def transform_output(self, output: Tensor) -> Tensor:
-        return output.nan_to_num()#(output + 1.0) / 2.0
+        return (output.nan_to_num() + 1.0) / 2.0
 
     def transform_gt(self, gt: Tensor) -> Tensor:
         return gt.to(self.device).clamp(0.0, 1.0)

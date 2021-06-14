@@ -19,11 +19,11 @@ import matplotlib
 matplotlib.use("Agg")
 from matplotlib.cm import get_cmap
 
-from config import Config
+from configs.config import Config
 from measures import mae, mse, psnr
-from datawriter import serialize_and_save_results
+from utils.datawriter import serialize_and_save_results
 import netutils
-from utils import tosRGB_tensor
+from utils.utils import tosRGB_tensor
 
 
 class Evaluator:

@@ -1,5 +1,5 @@
-from utils import results_to_latex_d
-from config import Config
+from utils.utils import results_to_latex_d
+from configs.config import Config
 import json
 import dataclasses
 from os.path import join

@@ -16,8 +16,8 @@ from torch.tensor import Tensor
 from torch.utils.data.dataset import Dataset
 from torch.utils.data import DataLoader
 
+from configs.config import Directories
 from GIDataset import ALL_INPUT_BUFFERS_CANONICAL, BufferType, GIDataset
-from config import Directories
 
 
 def tosRGB(image_arr):
@@ -276,8 +276,8 @@ def results_to_latex(results_path: str):
 
 
 def results_to_latex_d(results_dict):
-    results_latex = "\\textbf{{}}          & {0}     & {1}     & {2}     & {3}    & {4}     \\\\ \hdashline".format(
-        results_dict["mae"], results_dict["mse"], results_dict["ssim"], results_dict["psnr"], results_dict["lpips"]
+    results_latex = "\\textbf{{}}          & {0}     & {1}     & {2}     & {3}   \\\\ \hdashline".format(
+        results_dict["mae"], results_dict["mse"], results_dict["ssim"], results_dict["lpips"]
     )
     return results_latex
 
@@ -312,9 +312,3 @@ def find_mean_and_stdev(dataset: Dataset) -> None:  # Tuple[Tensor, Tensor]:
     print(mean)
     print("Std: ")
     print(std)
-
-
-if __name__ == "__main__":
-    net_name = "resunet_06_01_2021__17_43_42_vanilla_lr_sched_6"
-    results_path = "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/resunet/{}/results_secondary_test_set.json".format(net_name)
-    print(results_to_latex(results_path))

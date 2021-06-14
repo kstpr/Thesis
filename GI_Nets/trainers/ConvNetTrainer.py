@@ -1,39 +1,30 @@
+from trainers.BaseTrainer import BaseTrainer
 import dataclasses
-import enum
 
-from torch._C import OptionalType
 from enums import OptimizerType
-import logging
 from copy import deepcopy
-import random
 from os.path import join
 from timeit import default_timer as timer
-from typing import List, Optional, Tuple
-from numpy.lib.function_base import diff
-from piq.ssim import MultiScaleSSIMLoss
+from typing import List, Optional
 
 import torch
 from torch import nn, optim
-from torch.cuda.amp.autocast_mode import autocast
 from torch.nn.modules.loss import L1Loss, MSELoss
 from torch.tensor import Tensor
-from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Dataset
-import torchvision.utils as vutils
-
 
 from torchsummary import summary
 from piq import SSIMLoss, LPIPS
-from dacite import config, from_dict
+from dacite import from_dict
 
-from config import Config
-from utils import tosRGB_tensor
-from datawriter import serialize_and_save_config
-import visualization as viz
-from logger import log_batch_stats, log_validation_stats
+from configs.config import Config
+from utils.datawriter import serialize_and_save_config
+import utils.visualization as viz
+from utils.logger import log_batch_stats, log_validation_stats
 import netutils
 
-class Trainer:
+
+class ConvNetTrainer(BaseTrainer):
     def __init__(
         self,
         config: Config,
@@ -43,53 +34,20 @@ class Trainer:
         device: torch.device,
         io_transform: netutils.IOTransform,
         validation_dataset: Optional[Dataset] = None,
-        optimizer_type: OptimizerType = OptimizerType.ADAM, # TODO add to config
+        optimizer_type: OptimizerType = OptimizerType.ADAM,  # TODO add to config
     ) -> None:
-        self.init_torch()
-
-        self.config: Config = config
-
-        self.train_dataset = train_dataset
-        self.train_dataloader: DataLoader = DataLoader(
-            dataset=train_dataset,
-            batch_size=self.config.batch_size,
-            shuffle=True,
-            num_workers=self.config.num_workers_train,
-        )
-
-        self.init_validation_dataloader_if_needed(validation_dataset)
-
-        self.train_size = len(self.train_dataloader)
-        if self.config.use_validation:
-            self.validate_size = len(self.validation_dataloader)
-
-        self.device = device
-        self.io_transform = io_transform
+        super().__init__(config, device, train_dataset, io_transform, validation_dataset)
 
         self.net: nn.Module = net
         summary(self.net, input_size=(num_channels, 512, 512))
 
         self.optimizer: optim.Optimizer = self.create_optimizer(optimizer_type)
-        
+
         # TODO make this more polite
         if config.use_lr_scheduler:
             self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[5, 20, 40, 70], gamma=0.2)
         else:
             self.scheduler = None
-
-        # Hardcoded for reproducibility
-        self.samples_indices = [
-            2319,
-            3225,
-            3371,
-            2636,
-            4512,
-            984,
-            733,
-            649,
-            4741,
-            4333,
-        ]  # [0, 40, 124, 286, 342, 432, 519, 560, 668, 783]
 
         self.zero_tensor = torch.tensor(0.0)
 
@@ -119,7 +77,7 @@ class Trainer:
             serialize_and_save_config(self.config)
 
         ssim_loss_fn = SSIMLoss(kernel_size=7, data_range=1.0)
-        additional_loss_fn = LPIPS() 
+        additional_loss_fn = LPIPS()
         l2_loss_fn = MSELoss()
         l1_loss_fn = L1Loss()
 
@@ -152,7 +110,7 @@ class Trainer:
             self.print_end_epoch(epoch_num, begin_epoch)
 
             if (epoch_num % self.config.image_snapshots_interval == 0) or (epoch_num == self.config.num_epochs):
-                self.save_snapshots(epoch_num)
+                self.save_snapshots(self.net, epoch_num)
 
             self.save_networks_every_nth_epoch(epoch=epoch_num)
 
@@ -177,28 +135,11 @@ class Trainer:
 
     ### =================================== PRIVATE ===================================
 
-    def init_torch(self) -> None:
-        manualSeed = 999
-        print(manualSeed)
-        random.seed(manualSeed)
-        torch.manual_seed(manualSeed)
-
     def create_optimizer(self, optimizer_type: OptimizerType) -> torch.optim.Optimizer:
         if optimizer_type == OptimizerType.ADADELTA:
             return optim.Adadelta(self.net.parameters())
         elif optimizer_type == OptimizerType.ADAM:
             return optim.Adam(self.net.parameters())
-
-    def init_validation_dataloader_if_needed(self, validation_dataset: Optional[Dataset]):
-        if self.config.use_validation:
-            if validation_dataset == None:
-                raise Exception("Expected to use validation dataset but None is provided.")
-            self.validation_dataloader: DataLoader = DataLoader(
-                dataset=validation_dataset,
-                batch_size=self.config.batch_size,
-                shuffle=True,
-                num_workers=self.config.num_workers_train,
-            )
 
     def train_epoch(self, epoch, l1_loss_fn, l2_loss_fn, ssim_loss_fn, additional_loss_fn) -> List[float]:
         losses: List[float] = []
@@ -237,7 +178,7 @@ class Trainer:
             )
 
             loss.backward()
-            
+
             self.optimizer.step()
 
             # TODO may be a bottleneck
@@ -310,7 +251,9 @@ class Trainer:
         total_sdsim_loss /= num_batches
         total_additional_loss /= num_batches
 
-        log_validation_stats(epoch_num, timer() - begin_validation, total_loss, total_sdsim_loss, total_l1_loss, total_additional_loss)
+        log_validation_stats(
+            epoch_num, timer() - begin_validation, total_loss, total_sdsim_loss, total_l1_loss, total_additional_loss
+        )
 
         self.net.train()
 
@@ -331,44 +274,6 @@ class Trainer:
 
         # TODO these should be constants
         return one_minus_ssim_val / torch.full(one_minus_ssim_val.size(), 2.0)
-
-    def save_snapshots(self, epoch_num):
-        save_dir = self.config.dirs.result_snapshots_dir
-        image_path = save_dir + "snapshot_{}.png".format(epoch_num)
-
-        tensors = []
-        with torch.no_grad():
-            for index in self.samples_indices:
-                (sample_input, sample_gt) = self.train_dataset.__getitem__(index)
-
-                input_clone = sample_input.clone().to(self.device)
-
-                transformed_input: Tensor = self.io_transform.transform_input(sample_input.unsqueeze(0)).squeeze()
-                transformed_gt: Tensor = self.io_transform.transform_gt_eval(
-                    sample_gt.unsqueeze(0), visualize=True
-                ).squeeze()
-                transformed_output: Tensor = (
-                    self.io_transform.transform_output_eval(
-                        output=self.net(transformed_input.unsqueeze(0)), visualize=True
-                    )
-                    .detach()
-                    .squeeze()
-                )
-
-                self.io_transform.clear()
-
-                diffuse_albedo = tosRGB_tensor(input_clone[0:3, :].clone())
-                tensors.append(diffuse_albedo)
-
-                di = tosRGB_tensor(input_clone[3:6, :].clone())
-                tensors.append(di)
-
-                tensors.append(transformed_gt)
-                tensors.append(transformed_output)
-
-        num_images = 4
-        grid_tensor = vutils.make_grid(tensors, nrow=num_images).cpu()
-        vutils.save_image(grid_tensor, image_path)
 
     def save_networks_every_nth_epoch(self, epoch):
         """Save (at most) N network snapshots during the whole training."""
@@ -402,15 +307,3 @@ class Trainer:
             },
             file_path,
         )
-
-    def print_begin_epoch(self, epoch_num):
-        print()
-        print("----------------------------------------------------------------")
-        print("Epoch {0}.".format(epoch_num))
-        print("----------------------------------------------------------------")
-
-    def print_end_epoch(self, epoch_num, begin_epoch):
-        print("----------------------------------------------------------------")
-        print("Epoch {0} took {1:.2f} s.".format(epoch_num, timer() - begin_epoch))
-        print("----------------------------------------------------------------")
-        print()
