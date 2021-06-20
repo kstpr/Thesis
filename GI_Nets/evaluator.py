@@ -87,8 +87,8 @@ class Evaluator:
                     continue
 
                 input: Tensor = self.io_transform.transform_input(input)
-                gt: Tensor = self.io_transform.transform_gt(gt)
-                output: Tensor = self.io_transform.transform_output(output=self.net(input))
+                gt: Tensor = self.io_transform.transform_gt_eval(gt, visualize=False)
+                output: Tensor = self.io_transform.transform_output_eval(output=self.net(input), visualize=False)
 
                 self.io_transform.clear()
 

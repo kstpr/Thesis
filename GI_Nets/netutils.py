@@ -56,7 +56,6 @@ class IOTransform(ABC):
     def clear(self):
         self.unmodified_input = None
 
-
 class ClampGtTransform(IOTransform):
     """Clamps gt to [0, 1] and moves some tensors to device. Otherwise leaves the i/o unchanged."""
 
@@ -68,7 +67,6 @@ class ClampGtTransform(IOTransform):
 
     def transform_gt(self, gt: Tensor) -> Tensor:
         return gt.to(self.device).clamp(0.0, 1.0)
-
 
 class AdditiveDiMaskTransform(IOTransform):
     """Transforms di to be a mask = di - albedo, in range [-1, 1]. Network output is regarded also as
@@ -157,6 +155,26 @@ class AdditiveDiGtMaskTransform(IOTransform):
 
 PI_OVER_2 = 3.1415926535 / 2.0
 EPS = 0.00000001
+C = 0.992824927
+
+class InputDIAsMaskTransform(IOTransform):
+    """Clamps gt to [0, 1] and moves some tensors to device. Otherwise leaves the i/o unchanged."""
+
+    def transform_input(self, input: Tensor) -> Tensor:
+        input = super().transform_input(input)
+        albedo = input[:, 0:3, :].clamp(0.0, 1.0)
+
+        di_mask = torch.div(input[:, 3:6, :].clamp(0.0, 1.0), albedo).nan_to_num() # in [0, infty)
+        
+        # di -> log-space mask in input
+        input[:, 3:6, :] = transform_mask_log_space(di_mask) # in (-1, 1)
+        return input
+
+    def transform_output(self, output: Tensor) -> Tensor:
+        return (output.nan_to_num() + 1.0) / 2.0
+
+    def transform_gt(self, gt: Tensor) -> Tensor:
+        return gt.to(self.device).clamp(0.0, 1.0)
 
 class MultDiMaskTransform(IOTransform):
     def __init__(
@@ -183,7 +201,7 @@ class MultDiMaskTransform(IOTransform):
         return input
 
     def transform_output(self, output: Tensor) -> Tensor:
-        output_mask = (PI_OVER_2) * output * 0.992824927 # in [-PI/2,PI/2] 
+        output_mask = (PI_OVER_2) * output * C # in [-PI/2,PI/2] 
         output_mask = torch.exp(torch.tan(output_mask))
 
         albedo = self.unmodified_input[:, 0:3, :].clamp(self.min_positive, 1.0)
@@ -205,19 +223,21 @@ class MultDiGtMaskTransform(IOTransform):
         super().__init__(device)
         self.remove_albedo = remove_albedo
         self.normalize_input = normalize_input
+        self.min_positive = torch.finfo(torch.float32).tiny
+
         # if self.normalize_input:
         #     self.normalizer = Normalize(DATASET_MEAN_MULT_MASK, DATASET_STD_MULT_MASK)
 
     def transform_input(self, input: Tensor) -> Tensor:
         input = super().transform_input(input)
 
-        albedo = input[:, 0:3, :].clamp(0.0, 1.0) + 1.0  # in [0, 1]
+        albedo = input[:, 0:3, :].clamp(0.0, 1.0)
 
-        di_mask = torch.div(input[:, 3:6, :].clamp(0.0, 1.0) + 1.0, albedo)  # in [0.5, 2.0]
-        di_mask = (di_mask - 0.5) / 1.5  # in [0, 1]
-
-        input[:, 3:6, :] = di_mask
-
+        di_mask = torch.div(input[:, 3:6, :].clamp(0.0, 1.0), albedo).nan_to_num() # in [0, infty)
+        
+        # di -> mask in input
+        input[:, 3:6, :] = transform_mask_log_space(di_mask) # in (-1, 1)
+        
         if self.normalize_input:
             input = self.normalizer(input)
 
@@ -226,22 +246,22 @@ class MultDiGtMaskTransform(IOTransform):
         return input
 
     def transform_output(self, output: Tensor) -> Tensor:
-        return (output + 1.0) / 2.0  # in [0, 1]
+        return output
 
     def transform_gt(self, gt: Tensor) -> Tensor:
-        gt = gt.to(self.device).clamp(0.0, 1.0) + 1.0  # gt in [1, 2]
-        albedo = self.unmodified_input[:, 0:3, :].clamp(0.0, 1.0) + 1.0  # albedo in [1, 2]
-
-        mask_gt = torch.div(gt, albedo)  # mask in [0.5, 2.0]
-        mask_gt = (mask_gt - 0.5) / 1.5  # mask in [0, 1]
-        return mask_gt
+        gt = gt.to(self.device).clamp(0.0, 1.0)
+        albedo = self.unmodified_input[:, 0:3, :].clamp(self.min_positive, 1.0)
+        mask_gt = torch.div(gt, albedo).nan_to_num() # in [0, infty)
+        return transform_mask_log_space(mask_gt) # in (-1, 1)
 
     def transform_output_eval(self, output: Tensor, visualize: bool = False) -> Tensor:
         """Like transform_output but returns tensor ready for evaluation/visualization."""
-        albedo = self.unmodified_input[:, 0:3, :].clamp(0.0, 1.0) + 1.0  # in [1, 2]
-        mask = self.transform_output(output)  # in [0, 1]
-        mask = (mask * 1.5) + 0.5  # in [0.5, 2.0]
-        result = (torch.mul(mask, albedo) - 1.0).clamp(0.0, 1.0)  # in [0, 1]
+        albedo = self.unmodified_input[:, 0:3, :].clamp(0.0, 1.0)
+
+        mask = self.transform_output(output) # in [-1, 1]
+        mask_exp = transform_mask_exp_space(mask) # in (0, infty)
+
+        result = torch.mul(mask_exp, albedo).nan_to_num()  # expected in [0, 1], actual [0, infty)
         if visualize:
             result = tosRGB_tensor(result)
         else:
@@ -258,3 +278,16 @@ class MultDiGtMaskTransform(IOTransform):
             result.clamp(0.0, 1.0)
 
         return result
+
+
+def transform_mask_log_space(mask: Tensor) -> Tensor:
+    """Takes a mask in [0, infty) as an input and transforms it to (-1, 1). The transforms
+    transform the output range as follows:
+    # [0, infty) -> log -> (-infty, infty) -> tanh -> (- pi/2, pi/2) -> / pi/2 -> (-1,1)
+    """
+    mask_norm = torch.tanh(torch.log(mask.nan_to_num().nan_to_num()))
+    return mask_norm 
+
+def transform_mask_exp_space(mask_log: Tensor) -> Tensor:
+    """Opposite of the above"""
+    return torch.exp(torch.atanh(mask_log).nan_to_num()).nan_to_num()

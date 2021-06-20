@@ -1,7 +1,16 @@
 # %%
+from cgi import test
 from torchsummary.torchsummary import summary
 from trainers.Pix2PixTrainer import Pix2PixTrainer
-from DeepIllumination.networks import define_D, define_G
+from trainers.Pix2PixHDTrainer import Pix2PixHDTrainer
+from DeepIllumination.networks import (
+    define_D as pix2pix_define_D,
+    define_G as pix2pix_define_G,
+)
+from DeepCG.networks import (
+    define_D as pix2pixHD_define_D,
+    define_G as pix2pixHD_define_G,
+)
 from typing import List, Tuple
 
 import torch
@@ -15,7 +24,7 @@ from wandb.sdk.wandb_run import Run
 from evaluator import Evaluator
 from DeepShadingBased.DS_UNet import UNet
 from GIDatasetCached import DatasetType, GIDatasetCached
-from GIDataset import BufferType
+from GIDataset import ALL_INPUT_BUFFERS_CANONICAL, BufferType
 from configs.config import Config, ConfigGAN, Directories
 from trainers.ConvNetTrainer import ConvNetTrainer
 import netutils
@@ -31,12 +40,21 @@ from utils.utils import (
 
 
 def setup_wandb(config: Config) -> Run:
-    run = wandb.init(settings=wandb.Settings(start_method="fork"), entity="kpresnakov", project="gi", reinit=True)
+    run = wandb.init(
+        settings=wandb.Settings(start_method="fork"),
+        entity="kpresnakov",
+        project="gi",
+        reinit=True,
+    )
 
     wandb_config = wandb.config  # Initialize config
-    wandb_config.batch_size = config.batch_size  # input batch size for training (default: 64)
+    wandb_config.batch_size = (
+        config.batch_size
+    )  # input batch size for training (default: 64)
     wandb_config.epochs = config.num_epochs  # number of epochs to train (default: 10)
-    wandb_config.log_interval = config.batches_log_interval  # how many batches to wait before logging training status
+    wandb_config.log_interval = (
+        config.batches_log_interval
+    )  # how many batches to wait before logging training status
     wandb_config.decr = config.descr
 
     return run
@@ -47,17 +65,23 @@ def load_config_from_saved_net_descr(checkpoint: dict) -> Config:
     return config
 
 
-def load_net_from_saved_net_descr(checkpoint: dict, blueprint_net: nn.Module) -> nn.Module:
+def load_net_from_saved_net_descr(
+    checkpoint: dict, blueprint_net: nn.Module
+) -> nn.Module:
     blueprint_net.load_state_dict(checkpoint["model_state_dict"])
     return blueprint_net
 
 
-def load_saved_network(checkpoint_path: str, num_channels=16) -> Tuple[nn.Module, torch.device, Config]:
+def load_saved_network(
+    checkpoint_path: str, num_channels=16
+) -> Tuple[nn.Module, torch.device, Config]:
     print("Loading {}...".format(checkpoint_path))
     checkpoint: dict = torch.load(checkpoint_path)
     config = load_config_from_saved_net_descr(checkpoint)
 
-    device = torch.device("cuda:0" if (torch.cuda.is_available() and config.num_gpu > 0) else "cpu")
+    device = torch.device(
+        "cuda:0" if (torch.cuda.is_available() and config.num_gpu > 0) else "cpu"
+    )
     # TODO Manually instantiates the network, should be automated
     # net =  ResUNet(num_channels, final_activation=Activation.TANH, levels=6).to(device)
     net = UNet(num_channels)
@@ -101,27 +125,26 @@ def new_config(
 
 
 def new_gan_config(
-    dirs: Directories,
-    descr: str,
-    num_epochs: int = 200,
+    dirs: Directories, descr: str, num_epochs: int = 100, log_interval=50
 ) -> ConfigGAN:
     config: ConfigGAN = ConfigGAN(
         num_gpu=1,
         num_workers_train=6,
         num_workers_validate=6,
         num_workers_test=6,
-        batch_size=8,
+        batch_size=7,
         num_epochs=num_epochs,
-        learning_rate=0.01,
+        learning_rate=0.01,  # Not used for GANs
         use_validation=True,
         use_lr_scheduler=True,
-        alpha=-1,  # SDSIM weight
-        beta=-1,  # L1 weight
-        gamma=-1,  # L2 weight
-        delta=-1,  # Additional term weight
+        alpha=-1,  # SDSIM weight Not used for GANs
+        beta=-1,  # L1 weight Not used for GANs
+        gamma=-1,  # L2 weight Not used for GANs
+        delta=-1,  # Additional term weight Not used for GANs
         dirs=dirs,
         num_network_snapshots=5,
         image_snapshots_interval=1,
+        batches_log_interval=log_interval,
         descr=descr,
         lr_optim_D=0.0002,
         lr_optim_G=0.0002,
@@ -145,9 +168,15 @@ def run():
         BufferType.DEPTH,
     ]
 
+    reduced_buffer = [
+        BufferType.ALBEDO,
+        BufferType.DI,
+        BufferType.CS_NORMALS
+    ]
+
     train_dataset_cached = GIDatasetCached(
         "/home/ksp/Thesis/data/GI/NdArrays/Train/",
-        input_buffers=buffers_list,
+        input_buffers=reduced_buffer,
         use_hdr=True,
         resolution=512,
         type=DatasetType.ND_ARRAYS,
@@ -155,7 +184,7 @@ def run():
 
     validation_dataset_cached = GIDatasetCached(
         "/home/ksp/Thesis/data/GI/NdArrays/Validate/",
-        input_buffers=buffers_list,
+        input_buffers=reduced_buffer,
         use_hdr=True,
         resolution=512,
         type=DatasetType.ND_ARRAYS,
@@ -163,7 +192,7 @@ def run():
 
     test_dataset_cached = GIDatasetCached(
         "/home/ksp/Thesis/data/GI/NdArrays/Test/",
-        input_buffers=buffers_list,
+        input_buffers=reduced_buffer,
         use_hdr=True,
         resolution=512,
         type=DatasetType.ND_ARRAYS,
@@ -175,37 +204,130 @@ def run():
     #    utils.benchmark_num_workers(16, train_dataset_cached)
     # utils.benchmark_num_workers(16, train_dataset_cached_arrays)
 
-    load_net: bool = False
+    kk: int = 1
 
-    if load_net:
-        run_saved(test_dataset_cached, validation_dataset_cached)
-    else:
-        run_new(train_dataset_cached, validation_dataset_cached, test_dataset_cached, buffers_list)
+    if kk == 0:
+        run_saved(train_dataset_cached, validation_dataset_cached, test_dataset_cached)
+    elif kk == 1:
+        run_new(
+            train_dataset_cached,
+            validation_dataset_cached,
+            test_dataset_cached,
+            reduced_buffer,
+        )
+    elif kk == 2:
+        eval_saved(test_dataset_cached, validation_dataset_cached)
 
-    # trainer.continue_training_loaded_model()
+def eval_saved(test_dataset: Dataset, validation_dataset: Dataset):
+    model_path = "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepCG/results/pix2pixHD_06_16_2021__00_13_25_pix2pixHD all losses vgg + feat + gan/network_snapshots/snapshot_epoch_100.tar"
+    num_channels = get_num_channels(ALL_INPUT_BUFFERS_CANONICAL)
+    device = torch.device("cuda:0")
+    io_transform: netutils.IOTransform = netutils.ClampGtTransform(device=device)
+    
+    checkpoint: dict = torch.load(model_path)
 
-
-def run_saved(dataset: Dataset, validation_dataset: Dataset):
-    net, device, config = load_saved_network(
-        "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/masks/unet_n_06_03_2021__17_47_08_no_albedo/network_snapshots/best_net_epoch_166.tar",
-        num_channels=13,
+    netG = pix2pixHD_define_G(
+        input_nc=num_channels, output_nc=3, ngf=64, netG="global", gpu_ids=[0]
     )
-    io_transform: netutils.IOTransform = netutils.MultDiMaskTransform(device=device, remove_albedo=True)
-    Evaluator(config, net, dataset, device, io_transform, save_results=True, uses_secondary_dataset=False).eval()
+    netG.load_state_dict(checkpoint["model_G_state_dict"])
+
+    config = from_dict(data_class=ConfigGAN, data=checkpoint["config"])
     Evaluator(
-        config, net, validation_dataset, device, io_transform, save_results=True, uses_secondary_dataset=True
+        config,
+        netG,
+        test_dataset,
+        device,
+        io_transform,
+        save_results=True,
+        uses_secondary_dataset=False,
+    ).eval()
+    Evaluator(
+        config,
+        netG,
+        validation_dataset,
+        device,
+        io_transform,
+        save_results=True,
+        uses_secondary_dataset=True,
     ).eval()
 
+def run_saved(
+    train_dataset: Dataset, validation_dataset: Dataset, test_dataset: Dataset
+):
+    model_path = "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepCG/results/pix2pixHD_06_16_2021__00_13_25_pix2pixHD all losses vgg + feat + gan/network_snapshots/snapshot_epoch_80.tar"
 
-def run_new(train_dataset: Dataset, validation_dataset: Dataset, test_dataset: Dataset, buffers_list: List[BufferType]):
-    dirs3: Directories = setup_directories_with_timestamp(
-        results_root="/home/ksp/Thesis/src/Thesis/GI_Nets/DeepShadingBased/results/pix2pix/",
-        experiment_name="pix2pix_64_IN_MULT",
-        additional_data="64_instance_norm_mult_mask",
+    num_channels = get_num_channels(ALL_INPUT_BUFFERS_CANONICAL)
+    device = torch.device("cuda:0")
+    io_transform: netutils.IOTransform = netutils.ClampGtTransform(device=device)
+
+    netD = pix2pixHD_define_D(
+        input_nc=num_channels + 3,
+        ndf=64,
+        num_D=3,
+        n_layers_D=3,
+        getIntermFeat=True,
+        gpu_ids=[0],
+    )
+    netG = pix2pixHD_define_G(
+        input_nc=num_channels, output_nc=3, ngf=64, netG="global", gpu_ids=[0]
     )
 
+    checkpoint: dict = torch.load(model_path)
+    config = from_dict(data_class=ConfigGAN, data=checkpoint["config"])
+    config.batch_size = 6
+
+    run = setup_wandb(config)
+
+    trainer = Pix2PixHDTrainer(
+        config=config,
+        device=device,
+        train_dataset=train_dataset,
+        num_channels=num_channels,
+        netG=netG,
+        netD=netD,
+        io_transform=io_transform,
+        validation_dataset=validation_dataset,
+    )
+
+    trainer.load_saved_model(model_path)
+    trainer.continue_training_loaded_model()
+
+    Evaluator(
+        config,
+        netG,
+        test_dataset,
+        device,
+        io_transform,
+        save_results=True,
+        uses_secondary_dataset=False,
+    ).eval()
+    Evaluator(
+        config,
+        validation_dataset,
+        device,
+        io_transform,
+        save_results=True,
+        uses_secondary_dataset=True,
+    ).eval()
+
+    run.finish()
+
+
+def run_new(
+    train_dataset: Dataset,
+    validation_dataset: Dataset,
+    test_dataset: Dataset,
+    buffers_list: List[BufferType],
+):
+    dirs3: Directories = setup_directories_with_timestamp(
+        results_root="/home/ksp/Thesis/src/Thesis/GI_Nets/DeepCG/results/",
+        experiment_name="pix2pixHD_AShNCs",
+        additional_data="reduced_buffer_albedo_shading_mask_normalsCS",
+    )
+
+    log_interval = len(train_dataset) // (8 * 10)
     configs = [
-        new_gan_config(dirs3, "pix2pix_64_IN_MULT_mask", num_epochs=200)
+        new_gan_config(dirs3, "pix2pixHD_DeepCG_buffer", num_epochs=100, log_interval=log_interval)
         # new_config(
         #     alpha=1.0,
         #     beta=0.5,
@@ -218,25 +340,40 @@ def run_new(train_dataset: Dataset, validation_dataset: Dataset, test_dataset: D
         # ),
     ]
 
-    device = torch.device("cuda:0")  # if (torch.cuda.is_available() and config.num_gpu > 0) else "cpu")
+    device = torch.device(
+        "cuda:0"
+    )  # if (torch.cuda.is_available() and config.num_gpu > 0) else "cpu")
 
     for (num, config) in enumerate(configs):
         run = setup_wandb(config)
         num_channels = get_num_channels(buffers_list)
 
         if num == 0:
-            io_transform: netutils.IOTransform = netutils.MultDiMaskTransform(device=device)
+            io_transform: netutils.IOTransform = netutils.InputDIAsMaskTransform(
+                device=device
+            )
             # net = UNet(num_channels)
             # net = ResUNet(num_channels, final_activation=Activation.SIGMOID, levels=6, norm_type=NormType.BATCH)
 
-            netG = define_G(input_nc=num_channels, netG="unet_256", norm="instance", output_nc=3, ngf=64, use_dropout=True, use_upsampling=False)
-            netD = define_D(input_nc=num_channels + 3, ndf=64, norm="instance", netD="basic")
+            # netG = pix2pix_define_D(input_nc=num_channels, netG="unet_256", norm="instance", output_nc=3, ngf=64, use_dropout=True, use_upsampling=False)
+            # netD = pix2pix_define_G(input_nc=num_channels + 3, ndf=64, norm="instance", netD="basic")
+            netD = pix2pixHD_define_D(
+                input_nc=num_channels + 3,
+                ndf=64,
+                num_D=3,
+                n_layers_D=3,
+                getIntermFeat=True,
+                gpu_ids=[0],
+            )
+            netG = pix2pixHD_define_G(
+                input_nc=num_channels, output_nc=3, ngf=64, netG="global", gpu_ids=[0]
+            )
 
         # net = net.to(device)
-        netG = netG.to(device)
-        netD = netD.to(device)
+        # netG = netG.to(device)
+        # netD = netD.to(device)
 
-        trainer = Pix2PixTrainer(
+        trainer = Pix2PixHDTrainer(
             config=config,
             device=device,
             train_dataset=train_dataset,
@@ -278,10 +415,22 @@ def run_new(train_dataset: Dataset, validation_dataset: Dataset, test_dataset: D
         # trainer.train()
 
         Evaluator(
-            config, netG, test_dataset, device, io_transform, save_results=True, uses_secondary_dataset=False
+            config,
+            netG,
+            test_dataset,
+            device,
+            io_transform,
+            save_results=True,
+            uses_secondary_dataset=False,
         ).eval()
         Evaluator(
-            config, netG, validation_dataset, device, io_transform, save_results=True, uses_secondary_dataset=True
+            config,
+            netG,
+            validation_dataset,
+            device,
+            io_transform,
+            save_results=True,
+            uses_secondary_dataset=True,
         ).eval()
 
         run.finish()
