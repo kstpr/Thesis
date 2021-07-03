@@ -1,5 +1,6 @@
 # %%
 from cgi import test
+from trainers.DeepCGTrainer import DeepCGTrainer
 from torchsummary.torchsummary import summary
 from trainers.Pix2PixTrainer import Pix2PixTrainer
 from trainers.Pix2PixHDTrainer import Pix2PixHDTrainer
@@ -28,8 +29,8 @@ from GIDataset import ALL_INPUT_BUFFERS_CANONICAL, BufferType
 from configs.config import Config, ConfigGAN, Directories
 from trainers.ConvNetTrainer import ConvNetTrainer
 import netutils
-from ResUNet import ResUNet
-from enums import Activation, NormType, OptimizerType
+from ResUNet import ResUNet, ResUNetPlusPlus
+from enums import Activation, NormType, OptimizerType, OutputType
 from utils.utils import (
     setup_directories_with_timestamp,
     undo_export_transforms_for_nd_arrays,
@@ -37,6 +38,8 @@ from utils.utils import (
     # sanity_check_2,
     find_mean_and_stdev,
 )
+
+ROOT_DIR = "/home/ksp/Thesis/src/Thesis/GI_Nets/"
 
 
 def setup_wandb(config: Config) -> Run:
@@ -98,7 +101,7 @@ def new_config(
     delta: float,
     dirs: Directories,
     descr: str,
-    num_epochs: int = 100,
+    num_epochs: int = 200,
     use_lr_scheduler: bool = False,
 ) -> Config:
     config: Config = Config(
@@ -108,7 +111,7 @@ def new_config(
         num_workers_test=6,
         batch_size=8,
         num_epochs=num_epochs,
-        learning_rate=0.01,
+        learning_rate=5e-4,
         use_validation=True,
         use_lr_scheduler=use_lr_scheduler,
         alpha=alpha,  # SDSIM weight
@@ -132,7 +135,7 @@ def new_gan_config(
         num_workers_train=6,
         num_workers_validate=6,
         num_workers_test=6,
-        batch_size=7,
+        batch_size=4,
         num_epochs=num_epochs,
         learning_rate=0.01,  # Not used for GANs
         use_validation=True,
@@ -168,15 +171,11 @@ def run():
         BufferType.DEPTH,
     ]
 
-    reduced_buffer = [
-        BufferType.ALBEDO,
-        BufferType.DI,
-        BufferType.CS_NORMALS
-    ]
+    reduced_buffer = [BufferType.ALBEDO, BufferType.DI, BufferType.CS_NORMALS]
 
     train_dataset_cached = GIDatasetCached(
         "/home/ksp/Thesis/data/GI/NdArrays/Train/",
-        input_buffers=reduced_buffer,
+        input_buffers=buffers_list,
         use_hdr=True,
         resolution=512,
         type=DatasetType.ND_ARRAYS,
@@ -184,7 +183,7 @@ def run():
 
     validation_dataset_cached = GIDatasetCached(
         "/home/ksp/Thesis/data/GI/NdArrays/Validate/",
-        input_buffers=reduced_buffer,
+        input_buffers=buffers_list,
         use_hdr=True,
         resolution=512,
         type=DatasetType.ND_ARRAYS,
@@ -192,7 +191,7 @@ def run():
 
     test_dataset_cached = GIDatasetCached(
         "/home/ksp/Thesis/data/GI/NdArrays/Test/",
-        input_buffers=reduced_buffer,
+        input_buffers=buffers_list,
         use_hdr=True,
         resolution=512,
         type=DatasetType.ND_ARRAYS,
@@ -213,21 +212,25 @@ def run():
             train_dataset_cached,
             validation_dataset_cached,
             test_dataset_cached,
-            reduced_buffer,
+            buffers_list,
         )
     elif kk == 2:
         eval_saved(test_dataset_cached, validation_dataset_cached)
 
+
 def eval_saved(test_dataset: Dataset, validation_dataset: Dataset):
-    model_path = "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepCG/results/pix2pixHD_06_16_2021__00_13_25_pix2pixHD all losses vgg + feat + gan/network_snapshots/snapshot_epoch_100.tar"
+    model_path = (
+        ROOT_DIR
+        + "DeepCG/results/pix2pixHD_full_buffer_masks_06_24_2021__00_30_43_full buffer/network_snapshots/snapshot_epoch_100.tar"
+    )
     num_channels = get_num_channels(ALL_INPUT_BUFFERS_CANONICAL)
     device = torch.device("cuda:0")
-    io_transform: netutils.IOTransform = netutils.ClampGtTransform(device=device)
-    
+    io_transform: netutils.IOTransform = netutils.MultMaskTransform(device=device)
+
     checkpoint: dict = torch.load(model_path)
 
     netG = pix2pixHD_define_G(
-        input_nc=num_channels, output_nc=3, ngf=64, netG="global", gpu_ids=[0]
+        input_nc=num_channels, output_nc=3, ngf=64, netG="local", gpu_ids=[0]
     )
     netG.load_state_dict(checkpoint["model_G_state_dict"])
 
@@ -251,42 +254,72 @@ def eval_saved(test_dataset: Dataset, validation_dataset: Dataset):
         uses_secondary_dataset=True,
     ).eval()
 
+
 def run_saved(
     train_dataset: Dataset, validation_dataset: Dataset, test_dataset: Dataset
 ):
-    model_path = "/home/ksp/Thesis/src/Thesis/GI_Nets/DeepCG/results/pix2pixHD_06_16_2021__00_13_25_pix2pixHD all losses vgg + feat + gan/network_snapshots/snapshot_epoch_80.tar"
+    model_path = (
+        ROOT_DIR
+        + "DeepShadingBased/results/resunet_pp/4_levels_06_30_2021__18_51_41_full buffer_IN/network_snapshots/snapshot_epoch_40.tar"
+    )
 
     num_channels = get_num_channels(ALL_INPUT_BUFFERS_CANONICAL)
     device = torch.device("cuda:0")
-    io_transform: netutils.IOTransform = netutils.ClampGtTransform(device=device)
+    io_transform = netutils.ClampGtTransform(device=device)
 
-    netD = pix2pixHD_define_D(
-        input_nc=num_channels + 3,
-        ndf=64,
-        num_D=3,
-        n_layers_D=3,
-        getIntermFeat=True,
-        gpu_ids=[0],
-    )
-    netG = pix2pixHD_define_G(
-        input_nc=num_channels, output_nc=3, ngf=64, netG="global", gpu_ids=[0]
-    )
+    net = ResUNetPlusPlus(num_channels, final_activation=Activation.SIGMOID, levels=3, norm_type=NormType.BATCH)
+    net.to(device)
+
+    # conf = netutils.MMTConfig(
+    #     input_as_mask=True,
+    #     output_type=OutputType.ALBEDO_MULT_W_MASK,
+    #     gt_as_mask=False
+    # )
+    # io_transform: netutils.IOTransform = netutils.MultMaskTransform(
+    #     device=device, config=conf
+    # )
+    # netG = pix2pix_define_G(input_nc=num_channels, netG="unet_256", norm="instance", output_nc=3, ngf=64, use_dropout=True, use_upsampling=False)
+    # netD = pix2pix_define_D(input_nc=num_channels + 3, ndf=64, norm="instance", netD="basic")
+    # netG.to(device)
+    # netD.to(device)
+    # netD = pix2pixHD_define_D(
+    #     input_nc=num_channels + 3,
+    #     ndf=64,
+    #     num_D=3,
+    #     n_layers_D=3,
+    #     getIntermFeat=True,
+    #     gpu_ids=[0],
+    # )
+    # netG = pix2pixHD_define_G(
+    #     input_nc=num_channels, output_nc=3, ngf=64, netG="local", gpu_ids=[0]
+    # )
 
     checkpoint: dict = torch.load(model_path)
     config = from_dict(data_class=ConfigGAN, data=checkpoint["config"])
-    config.batch_size = 6
+    # config.num_epochs = 200
 
     run = setup_wandb(config)
 
-    trainer = Pix2PixHDTrainer(
+    # trainer = Pix2PixTrainer(
+    #     config=config,
+    #     device=device,
+    #     train_dataset=train_dataset,
+    #     num_channels=num_channels,
+    #     netG=netG,
+    #     netD=netD,
+    #     io_transform=io_transform,
+    #     validation_dataset=validation_dataset,
+    # )
+
+    trainer = ConvNetTrainer(
         config=config,
-        device=device,
         train_dataset=train_dataset,
+        net=net,
         num_channels=num_channels,
-        netG=netG,
-        netD=netD,
+        device=device,
         io_transform=io_transform,
         validation_dataset=validation_dataset,
+        optimizer_type=OptimizerType.ADAM,
     )
 
     trainer.load_saved_model(model_path)
@@ -294,7 +327,7 @@ def run_saved(
 
     Evaluator(
         config,
-        netG,
+        net,
         test_dataset,
         device,
         io_transform,
@@ -303,6 +336,7 @@ def run_saved(
     ).eval()
     Evaluator(
         config,
+        net,
         validation_dataset,
         device,
         io_transform,
@@ -319,25 +353,31 @@ def run_new(
     test_dataset: Dataset,
     buffers_list: List[BufferType],
 ):
+    dirs2: Directories = setup_directories_with_timestamp(
+        results_root=ROOT_DIR + "DeepShadingBased/results/resunet_pp/",
+        experiment_name="4_levels",
+        additional_data="full buffer_No_Norm",
+    )
+
     dirs3: Directories = setup_directories_with_timestamp(
-        results_root="/home/ksp/Thesis/src/Thesis/GI_Nets/DeepCG/results/",
-        experiment_name="pix2pixHD_AShNCs",
-        additional_data="reduced_buffer_albedo_shading_mask_normalsCS",
+        results_root=ROOT_DIR + "DeepCG/results/",
+        experiment_name="pix2pixHD_mult_masks",
+        additional_data="full buffer",
     )
 
     log_interval = len(train_dataset) // (8 * 10)
     configs = [
-        new_gan_config(dirs3, "pix2pixHD_DeepCG_buffer", num_epochs=100, log_interval=log_interval)
-        # new_config(
-        #     alpha=1.0,
-        #     beta=0.5,
-        #     gamma=0.0,
-        #     delta=0.0,
-        #     dirs=dirs3,
-        #     descr="""ResUNet 6 layers, full buffer with Loss = SDSIM + 0.5 L1 + 0.5 LPIPS. Batch Norm. Adam optimizer with lr sched [6, 20, 40, 70], gamma = 0.2.""",
-        #     use_lr_scheduler=True,
-        #     num_epochs=1,
-        # ),
+        # new_gan_config(dirs3, "pix2pixHD_mult_mask", num_epochs=100, log_interval=log_interval)
+        new_config(
+            alpha=1.0,
+            beta=0.5,
+            gamma=0.0,
+            delta=0.0,
+            dirs=dirs2,
+            descr="resunet_pp_4_levels_no_norm_SDSIM + L1",
+            use_lr_scheduler=True,
+            num_epochs=100,
+        ),
     ]
 
     device = torch.device(
@@ -348,65 +388,96 @@ def run_new(
         run = setup_wandb(config)
         num_channels = get_num_channels(buffers_list)
 
-        if num == 0:
-            io_transform: netutils.IOTransform = netutils.InputDIAsMaskTransform(
-                device=device
-            )
-            # net = UNet(num_channels)
-            # net = ResUNet(num_channels, final_activation=Activation.SIGMOID, levels=6, norm_type=NormType.BATCH)
-
-            # netG = pix2pix_define_D(input_nc=num_channels, netG="unet_256", norm="instance", output_nc=3, ngf=64, use_dropout=True, use_upsampling=False)
-            # netD = pix2pix_define_G(input_nc=num_channels + 3, ndf=64, norm="instance", netD="basic")
-            netD = pix2pixHD_define_D(
-                input_nc=num_channels + 3,
-                ndf=64,
-                num_D=3,
-                n_layers_D=3,
-                getIntermFeat=True,
-                gpu_ids=[0],
-            )
-            netG = pix2pixHD_define_G(
-                input_nc=num_channels, output_nc=3, ngf=64, netG="global", gpu_ids=[0]
-            )
-
+        # net = ResUNet(num_channels, final_activation=Activation.TANH, levels=6)
         # net = net.to(device)
+
+        if num == 0:
+            # conf = netutils.MMTConfig(
+            #     input_as_mask=True,
+            #     output_type=OutputType.ALBEDO_MULT_W_MASK,
+            #     gt_as_mask=False
+            # )
+            # io_transform: netutils.IOTransform = netutils.MultMaskTransform(
+            #     device=device, config=conf
+            # )
+            io_transform = netutils.ClampGtTransform(device=device)
+
+            # net = ResUNet(num_channels, final_activation=Activation.SIGMOID, levels=6, norm_type=NormType.BATCH)
+            net = ResUNetPlusPlus(num_channels, final_activation=Activation.SIGMOID, levels=4, norm_type=NormType.NONE)
+            net.to(device)
+            # netG = pix2pix_define_G(input_nc=num_channels, netG="unet_256", norm="instance", output_nc=3, ngf=64, use_dropout=True, use_upsampling=False)
+            # netD = pix2pix_define_D(input_nc=num_channels + 3, ndf=64, norm="instance", netD="basic")
+            # netD = pix2pixHD_define_D(
+            #     input_nc=num_channels + 3,
+            #     ndf=64,
+            #     num_D=3,
+            #     n_layers_D=3,
+            #     getIntermFeat=True,
+            #     gpu_ids=[0],
+            # )
+            # netD_2 = pix2pixHD_define_D(
+            #     input_nc=num_channels + 3,
+            #     ndf=64,
+            #     num_D=3,
+            #     n_layers_D=3,
+            #     getIntermFeat=True,
+            #     gpu_ids=[0],
+            # )
+            # netG = pix2pixHD_define_G(
+            #     input_nc=num_channels, output_nc=3, ngf=64, netG="local", gpu_ids=[0]
+            # )
+
         # netG = netG.to(device)
         # netD = netD.to(device)
 
-        trainer = Pix2PixHDTrainer(
+        # trainer = Pix2PixHDTrainer(
+        #     config=config,
+        #     device=device,
+        #     train_dataset=train_dataset,
+        #     num_channels=num_channels,
+        #     netG=netG,
+        #     netD=netD,
+        #     io_transform=io_transform,
+        #     validation_dataset=validation_dataset,
+        # )
+
+        # trainer = DeepCGTrainer(
+        #     config=config,
+        #     device=device,
+        #     train_dataset=train_dataset,
+        #     num_channels=num_channels,
+        #     netG=netG,
+        #     netD=netD,
+        #     netD_2=netD_2,
+        #     io_transform=io_transform,
+        #     validation_dataset=validation_dataset,
+        # )
+
+        trainer = ConvNetTrainer(
             config=config,
-            device=device,
             train_dataset=train_dataset,
+            net=net,
             num_channels=num_channels,
-            netG=netG,
-            netD=netD,
+            device=device,
             io_transform=io_transform,
             validation_dataset=validation_dataset,
+            optimizer_type=OptimizerType.ADAM,
         )
+
+        # trainer = Pix2PixTrainer(
+        #     config=config,
+        #     device=device,
+        #     train_dataset=train_dataset,
+        #     num_channels=num_channels,
+        #     netG=netG,
+        #     netD=netD,
+        #     io_transform=io_transform,
+        #     validation_dataset=validation_dataset,
+        # )
 
         trainer.train()
 
-        # trainer = ConvNetTrainer(
-        #     config=config,
-        #     train_dataset=train_dataset,
-        #     net=net,
-        #     num_channels=num_channels,
-        #     device=device,
-        #     io_transform=io_transform,
-        #     validation_dataset=validation_dataset,
-        #     optimizer_type=OptimizerType.ADAM
-        # )
-
-        # trainer2 = Pix2PixTrainer(
-        #     config=config,
-        #     device=device,
-        #     train_dataset=train_dataset,
-        #     num_channels=num_channels,
-        #     netG=net2,
-        #     netD=net2,
-        #     io_transform=io_transform,
-        #     validation_dataset=validation_dataset,
-        # )
+  
 
         # Evaluator(
         #     config, net, test_dataset, device, io_transform, save_results=True, uses_secondary_dataset=False
@@ -416,7 +487,7 @@ def run_new(
 
         Evaluator(
             config,
-            netG,
+            net,
             test_dataset,
             device,
             io_transform,
@@ -425,7 +496,7 @@ def run_new(
         ).eval()
         Evaluator(
             config,
-            netG,
+            net,
             validation_dataset,
             device,
             io_transform,

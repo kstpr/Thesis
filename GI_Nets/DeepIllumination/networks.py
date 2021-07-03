@@ -4,6 +4,7 @@ from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
 
+# Official Pix2Pix Code from https://github.com/phillipi/pix2pix
 
 ###############################################################################
 # Helper Functions

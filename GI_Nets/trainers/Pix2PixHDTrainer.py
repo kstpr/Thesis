@@ -29,13 +29,11 @@ class Pix2PixHDTrainer(GANTrainer):
         validation_dataset: Optional[Dataset],
         use_amp: bool = True
     ):
+        super().initialize_networks([netG, netD], num_channels)
         super().__init__(
             config,
             device,
             train_dataset,
-            num_channels,
-            netG,
-            netD,
             io_transform,
             validation_dataset,
         )

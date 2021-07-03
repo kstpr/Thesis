@@ -1,6 +1,9 @@
+import netutils
+from configs.config import ConfigGAN
 from trainers.GANTrainer import GANTrainer
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from utils.logger import log_batch_stats_gan
+from torch.utils.data.dataset import Dataset
 
 from torch.nn.modules.loss import L1Loss
 from torch.tensor import Tensor
@@ -12,6 +15,22 @@ from DeepIllumination.networks import GANLoss
 
 
 class Pix2PixTrainer(GANTrainer):
+    def __init__(
+        self,
+        config: ConfigGAN,
+        device: torch.device,
+        train_dataset: Dataset,
+        num_channels: int,
+        netG: nn.Module,
+        netD: nn.Module,
+        io_transform: netutils.IOTransform,
+        validation_dataset: Optional[Dataset],
+    ):
+        super().initialize_networks([netG, netD], num_channels)
+        super().__init__(
+            config, device, train_dataset, io_transform, validation_dataset
+        )
+
     def initialize_losses(self) -> List[nn.Module]:
         gan_loss_fn = GANLoss("vanilla").to(self.device)
         l1_loss_fn = L1Loss()

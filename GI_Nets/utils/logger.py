@@ -87,6 +87,34 @@ def log_batch_stats_pix2pixHD(
         }
     )
 
+def log_batch_stats_deepCG(
+    epoch: int,
+    batch_num: int,
+    batch_train_time: float,
+    d_1_loss: float,
+    d_2_loss: float,
+    g_gan_loss: float,
+    g_feat_loss: float,
+    g_vgg_loss: float,
+    g_total_loss: float,
+):
+    print(
+        "Batch {0} [{1:.4f} s]. L_D_1 = {2:.4f}, L_D_2 = {3:.4f}, L_G-GAN = {4:.4f}, L_G-Feat = {5:.4f}, L_G_VGG = {6:.4f}, L_G_Total = {7:.4f}".format(
+            batch_num, batch_train_time, d_1_loss, d_2_loss, g_gan_loss, g_feat_loss, g_vgg_loss, g_total_loss
+        )
+    )
+    wandb.log(
+        {
+            "Epoch": epoch,
+            "L_D_1": d_1_loss,
+            "L_D_2": d_2_loss,
+            "L_G-GAN": g_gan_loss,
+            "L_G-Feat": g_feat_loss,
+            "L_G-VGG": g_vgg_loss,
+            "L_G": g_total_loss
+        }
+    )
+
 
 def log_validation_stats(
     epoch: int,

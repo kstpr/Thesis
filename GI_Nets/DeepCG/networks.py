@@ -4,6 +4,8 @@ import functools
 from torch.autograd import Variable
 import numpy as np
 
+# Official Pix2PixHD code from https://github.com/NVIDIA/pix2pixHD
+
 ###############################################################################
 # Functions
 ###############################################################################

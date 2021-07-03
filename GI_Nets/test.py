@@ -1,4 +1,5 @@
 
+from ResUNet import SEBlock
 import torch
 from torch.tensor import Tensor
 import torchvision.utils as vutils
@@ -25,26 +26,26 @@ import matplotlib.cm as mpcm
 #     dtype=torch.float32
 # )
 
-device = device = torch.device("cuda:0")
-t = torch.randn(32, 3, 512, 512, dtype=torch.float32).to(device)
+# device = device = torch.device("cuda:0")
+# t = torch.randn(1, 16, 4, 4, dtype=torch.float32).to(device)
 # t = torch.full((32, 3, 512, 512), 0.0)
 
-print(t.shape)
+# print(t)
+
+# se_block = SEBlock(in_channels=16).to(device)
+# t = se_block(t)
+# print(t)
 # mask_lst = [1,1,0,0,0,0,0,1,1]#[1,1,1,0,0,1,1,1,0]
 # mask = torch.tensor(mask_lst).long() # 1s and 3s
 # s = torch.squeeze(t[mask.nonzero(), :], 1)
 # print(s.shape)
 
-s = torch.randn(1, 16, 128, 128)
-print(s.shape)
 #upsample = torch.nn.ConvTranspose2d(16, 16, 3, stride=2, padding=1, output_padding=1)
 
 #output = upsample(s)
 
 #print(output.shape)
 
-s = s[:,3:,:]
-print(s.shape)
 
 def scale_for(t: torch.Tensor):
     begin = timer()

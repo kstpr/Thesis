@@ -45,7 +45,15 @@ class ConvNetTrainer(BaseTrainer):
 
         # TODO make this more polite
         if config.use_lr_scheduler:
-            self.scheduler = optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[5, 20, 40, 70], gamma=0.2)
+            def lambda_rule(epoch):
+                lr_l = 1.0 - max(0, epoch + 1 - (config.num_epochs // 2)) / float(
+                    config.num_epochs // 2 + 1
+                )
+                return lr_l
+            self.scheduler = optim.lr_scheduler.LambdaLR(
+                optimizer=self.optimizer, lr_lambda=lambda_rule
+            ) 
+            #optim.lr_scheduler.MultiStepLR(self.optimizer, milestones=[5, 20, 40, 70], gamma=0.2)
         else:
             self.scheduler = None
 
@@ -62,6 +70,9 @@ class ConvNetTrainer(BaseTrainer):
         if "optimizer_state_dict" in checkpoint:
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
 
+        if "scheduler_state_dict" in checkpoint:
+            self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
+
         self.resume_epoch = checkpoint["epoch"]
         self.config = from_dict(data_class=Config, data=checkpoint["config"])
 
@@ -69,6 +80,13 @@ class ConvNetTrainer(BaseTrainer):
         if self.resume_epoch == self.config.num_epochs:
             print("Tried to continue training but it was already over.")
             return
+
+        print(
+            "Resume training from epoch {}, lr_D: {}, lr_G: {}".format(
+                self.resume_epoch,
+                self.scheduler.get_last_lr(),
+            )
+        )
 
         self.train(start_epoch=self.resume_epoch + 1)
 
@@ -86,7 +104,7 @@ class ConvNetTrainer(BaseTrainer):
 
         min_val_loss = 1000.0
         best_model_state: Optional[dict] = None
-        best_model_epoch: int = 0
+        best_model_epoch: int = 0 if start_epoch == 1 else start_epoch
 
         for epoch_num in range(start_epoch, self.config.num_epochs + 1):
             begin_epoch = timer()
@@ -117,7 +135,7 @@ class ConvNetTrainer(BaseTrainer):
             if (epoch_num % 10 == 0) and self.config.use_validation:
                 self.save_best_network(best_model_epoch, best_model_state)
 
-            if epoch_num - best_model_epoch > self.config.num_epochs // 10:
+            if epoch_num - best_model_epoch > self.config.num_epochs // 5:
                 # Stop training if the results don't improve for some epochs
                 break
 
@@ -139,7 +157,7 @@ class ConvNetTrainer(BaseTrainer):
         if optimizer_type == OptimizerType.ADADELTA:
             return optim.Adadelta(self.net.parameters())
         elif optimizer_type == OptimizerType.ADAM:
-            return optim.Adam(self.net.parameters())
+            return optim.Adam(self.net.parameters(), lr=self.config.learning_rate)
 
     def train_epoch(self, epoch, l1_loss_fn, l2_loss_fn, ssim_loss_fn, additional_loss_fn) -> List[float]:
         losses: List[float] = []
@@ -292,6 +310,7 @@ class ConvNetTrainer(BaseTrainer):
                     "config": dataclasses.asdict(self.config),
                     "model_state_dict": self.net.state_dict(),
                     "optimizer_state_dict": self.optimizer.state_dict(),
+                    "scheduler_state_dict": self.scheduler.state_dict()
                 },
                 file_path,
             )

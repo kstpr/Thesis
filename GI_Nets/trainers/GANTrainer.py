@@ -1,5 +1,6 @@
 from copy import deepcopy
 import dataclasses
+from re import S
 from typing import List, Optional, Tuple
 from utils.logger import (
     log_batch_stats_gan,
@@ -27,14 +28,13 @@ from dacite import from_dict
 
 
 class GANTrainer(BaseTrainer):
+    """Base class for training of different GANs"""
+
     def __init__(
         self,
         config: ConfigGAN,
         device: torch.device,
         train_dataset: Dataset,
-        num_channels: int,
-        netG: nn.Module,
-        netD: nn.Module,
         io_transform: netutils.IOTransform,
         validation_dataset: Optional[Dataset],
     ):
@@ -47,31 +47,38 @@ class GANTrainer(BaseTrainer):
         )
 
         self.config.__class__ = ConfigGAN
+ 
+        self.initialize_optimizers(config)
 
-        self.netG = netG
-        self.netD = netD
-
-        summary(self.netG, input_size=(num_channels, 512, 512))
-        summary(self.netD, input_size=(num_channels + 3, 512, 512))
-
-        self.optimizer_G = optim.Adam(
-            params=netG.parameters(),
-            betas=(config.optim_G_beta_1, config.optim_G_beta_2),
-            lr=config.lr_optim_G,
-        )
-        self.optimizer_D = optim.Adam(
-            params=netD.parameters(),
-            betas=(config.optim_D_beta_1, config.optim_D_beta_2),
-            lr=config.lr_optim_D,
-        )
-
-        # Similar to the one from Pix2Pix code - https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix/blob/f13aab8148bd5f15b9eb47b690496df8dadbab0c/models/networks.py#L38
         def lambda_rule(epoch):
             lr_l = 1.0 - max(0, epoch + 1 - (config.num_epochs // 2)) / float(
                 config.num_epochs // 2 + 1
             )
             return lr_l
+        self.intialize_schedulers(lambda_rule)
 
+    # Terrible design. Call BEFORE __init__ in child classes.
+    def initialize_networks(self, nets: List[nn.Module], num_channels: int):
+        self.netG = nets[0]
+        self.netD = nets[1]
+
+        summary(self.netG, input_size=(num_channels, 512, 512))
+        summary(self.netD, input_size=(num_channels + 3, 512, 512))
+
+    def initialize_optimizers(self, config: ConfigGAN):
+        self.optimizer_G = optim.Adam(
+            params=self.netG.parameters(),
+            betas=(config.optim_G_beta_1, config.optim_G_beta_2),
+            lr=config.lr_optim_G,
+        )
+        self.optimizer_D = optim.Adam(
+            params=self.netD.parameters(),
+            betas=(config.optim_D_beta_1, config.optim_D_beta_2),
+            lr=config.lr_optim_D,
+        )
+
+    def intialize_schedulers(self, lambda_rule):
+        # Similar to the one from Pix2Pix code - https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix/blob/f13aab8148bd5f15b9eb47b690496df8dadbab0c/models/networks.py#L38
         self.scheduler_G = optim.lr_scheduler.LambdaLR(
             optimizer=self.optimizer_G, lr_lambda=lambda_rule
         )
@@ -100,6 +107,8 @@ class GANTrainer(BaseTrainer):
 
         self.resume_epoch = checkpoint["epoch"]
         self.config = from_dict(data_class=ConfigGAN, data=checkpoint["config"])
+        # TODO - hacked up for a failed training, delete
+        self.config.num_epochs = 200
 
     def continue_training_loaded_model(self):
         if self.resume_epoch == self.config.num_epochs:
@@ -243,6 +252,7 @@ class GANTrainer(BaseTrainer):
             )
             print("Model snapshot saved in {}.".format(file_path))
 
+    #TODO this is broken as is.
     def save_best_network(self, epoch, network_state_dict):
         file_path = (
             self.config.dirs.network_snapshots_dir + "best_net_G_epoch_%d.tar" % epoch
@@ -255,17 +265,3 @@ class GANTrainer(BaseTrainer):
             },
             file_path,
         )
-
-    # From https://github.com/junyanz/pytorch-CycleGAN-and-pix2pix/blob/f13aab8148bd5f15b9eb47b690496df8dadbab0c/models/base_model.py#L219
-    def set_requires_grad(self, nets, requires_grad=False):
-        """Set requies_grad=Fasle for all the networks to avoid unnecessary computations
-        Parameters:
-            nets (network list)   -- a list of networks
-            requires_grad (bool)  -- whether the networks require gradients or not
-        """
-        if not isinstance(nets, list):
-            nets = [nets]
-        for net in nets:
-            if net is not None:
-                for param in net.parameters():
-                    param.requires_grad = requires_grad
